@@ -110,6 +110,54 @@ body {
   padding: 8px;
 }
 
+/* Session groups */
+.session-group {
+  margin-bottom: 2px;
+}
+
+.session-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.session-group-header:hover {
+  background: var(--card-hover);
+}
+
+.group-chevron {
+  font-size: 10px;
+  color: var(--text-secondary);
+  transition: transform 0.15s ease;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.group-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.group-count {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 0 6px;
+  border-radius: 10px;
+  line-height: 18px;
+}
+
+.session-group-header .time-ago {
+  margin-left: auto;
+}
+
+.session-group-items {
+  padding-left: 12px;
+}
+
 .session-card {
   padding: 12px;
   border-radius: 6px;
