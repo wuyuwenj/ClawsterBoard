@@ -1,6 +1,8 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { execFile } from "node:child_process";
+import { basename, join, resolve } from "node:path";
 import { homedir } from "node:os";
+import { promisify } from "node:util";
 import type {
   ActivityEntry,
   ContentBlock,
@@ -12,6 +14,7 @@ import type {
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
+const execFileAsync = promisify(execFile);
 
 export interface TokenUsageRecord {
   sessionId: string;
@@ -22,6 +25,13 @@ export interface TokenUsageRecord {
   cacheCreationTokens: number;
   cacheReadTokens: number;
 }
+
+interface RepoIdentity {
+  repoKey?: string;
+  repoSource?: string;
+}
+
+const repoIdentityCache = new Map<string, Promise<RepoIdentity>>();
 
 /**
  * Decode a Claude project folder name back to a readable path.
@@ -48,6 +58,115 @@ function decodeProjectPath(encoded: string): string {
 function projectName(decodedPath: string): string {
   const parts = decodedPath.split("/");
   return parts[parts.length - 1] || decodedPath;
+}
+
+function expandHomePath(decodedPath: string): string {
+  return decodedPath.startsWith("~/")
+    ? join(homedir(), decodedPath.slice(2))
+    : decodedPath;
+}
+
+function normalizeRemoteUrl(remoteUrl: string): RepoIdentity | null {
+  const trimmed = remoteUrl.trim();
+  if (!trimmed) return null;
+
+  let host = "";
+  let path = "";
+
+  const scpLikeMatch = trimmed.match(/^[^@]+@([^:]+):(.+)$/);
+  if (scpLikeMatch) {
+    host = scpLikeMatch[1].toLowerCase();
+    path = scpLikeMatch[2];
+  } else {
+    try {
+      const url = new URL(trimmed);
+      host = url.hostname.toLowerCase();
+      path = url.pathname.replace(/^\/+/, "");
+    } catch {
+      return null;
+    }
+  }
+
+  path = path.replace(/\/+$/, "").replace(/\.git$/i, "");
+  if (!host || !path) return null;
+
+  const repoKey = `${host}/${path.toLowerCase()}`;
+  const segments = path.split("/").filter(Boolean);
+  const repoSource =
+    host === "github.com" && segments.length >= 2
+      ? `${segments[segments.length - 2]}/${segments[segments.length - 1]}`
+      : `${host}/${path}`;
+
+  return { repoKey, repoSource };
+}
+
+function selectPreferredRemote(remotes: Array<{ name: string; url: string }>): string | null {
+  if (remotes.length === 0) return null;
+
+  const normalized = remotes
+    .map((remote) => ({
+      ...remote,
+      identity: normalizeRemoteUrl(remote.url),
+    }))
+    .filter((remote): remote is { name: string; url: string; identity: RepoIdentity } => Boolean(remote.identity));
+
+  if (normalized.length === 0) return null;
+
+  const origin = normalized.find((remote) => remote.name === "origin");
+  if (origin) return origin.url;
+
+  const upstream = normalized.find((remote) => remote.name === "upstream");
+  if (upstream) return upstream.url;
+
+  return normalized[0].url;
+}
+
+async function resolveRepoIdentity(projectRoot: string): Promise<RepoIdentity> {
+  const absolutePath = resolve(projectRoot);
+  const cached = repoIdentityCache.get(absolutePath);
+  if (cached) return cached;
+
+  const lookup = (async () => {
+    try {
+      const { stdout: rootStdout } = await execFileAsync("git", [
+        "-C",
+        absolutePath,
+        "rev-parse",
+        "--show-toplevel",
+      ]);
+      const repoRoot = rootStdout.trim();
+      if (!repoRoot) return {};
+
+      const { stdout: remoteStdout } = await execFileAsync("git", [
+        "-C",
+        repoRoot,
+        "config",
+        "--get-regexp",
+        "^remote\\..*\\.url$",
+      ]);
+
+      const remotes = remoteStdout
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean)
+        .map((line) => {
+          const [key, ...urlParts] = line.split(/\s+/);
+          const remoteName = key.match(/^remote\.(.+)\.url$/)?.[1];
+          return remoteName
+            ? { name: remoteName, url: urlParts.join(" ") }
+            : null;
+        })
+        .filter((remote): remote is { name: string; url: string } => Boolean(remote));
+
+      const selectedRemote = selectPreferredRemote(remotes);
+      return selectedRemote ? normalizeRemoteUrl(selectedRemote) ?? {} : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  repoIdentityCache.set(absolutePath, lookup);
+  return lookup;
 }
 
 async function collectJsonlFiles(rootDir: string): Promise<string[]> {
@@ -385,7 +504,8 @@ export async function scanSessions(): Promise<Session[]> {
           id: sessionId,
           projectPath: decodedPath,
           projectName: name,
-          cwd: firstMsg.cwd || decodedPath,
+          ...(await resolveRepoIdentity(firstMsg.cwd || expandHomePath(decodedPath))),
+          cwd: firstMsg.cwd || expandHomePath(decodedPath),
           startedAt: firstMsg.timestamp || fileStat.birthtime.toISOString(),
           lastActiveAt: lastMsg.timestamp || fileStat.mtime.toISOString(),
           messageCount,
