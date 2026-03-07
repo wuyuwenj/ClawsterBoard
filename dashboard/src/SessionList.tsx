@@ -1,13 +1,16 @@
 import { useState, useEffect, useRef, useMemo } from "react";
-import { fetchSessions, reindex, type Session } from "./api";
+import { fetchSessions, reindex, resumeSession, type Session } from "./api";
 
 interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
+  expanded?: boolean;
 }
 
+type ViewMode = "project" | "time";
+
 interface SessionGroup {
-  projectName: string;
+  label: string;
   sessions: Session[];
   lastActiveAt: string;
 }
@@ -24,7 +27,7 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-function groupSessions(sessions: Session[]): SessionGroup[] {
+function groupByProject(sessions: Session[]): SessionGroup[] {
   const map = new Map<string, Session[]>();
   for (const s of sessions) {
     const list = map.get(s.projectName) ?? [];
@@ -32,22 +35,88 @@ function groupSessions(sessions: Session[]): SessionGroup[] {
     map.set(s.projectName, list);
   }
   return Array.from(map.entries())
-    .map(([projectName, sessions]) => ({
-      projectName,
+    .map(([label, sessions]) => ({
+      label,
       sessions,
       lastActiveAt: sessions[0].lastActiveAt,
     }))
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 }
 
-export default function SessionList({ selectedId, onSelect }: Props) {
+function formatTimeSlot(date: Date): string {
+  const now = new Date();
+  const diff = now.getTime() - date.getTime();
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(hours / 24);
+
+  if (hours < 6) return "Last 6 hours";
+  if (hours < 12) return "6-12 hours ago";
+  if (hours < 18) return "12-18 hours ago";
+  if (hours < 24) return "18-24 hours ago";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return "Last week";
+  if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
+  return date.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+}
+
+function groupByTime(sessions: Session[]): SessionGroup[] {
+  const map = new Map<string, Session[]>();
+  const order: string[] = [];
+  for (const s of sessions) {
+    const slot = formatTimeSlot(new Date(s.lastActiveAt));
+    if (!map.has(slot)) {
+      map.set(slot, []);
+      order.push(slot);
+    }
+    map.get(slot)!.push(s);
+  }
+  return order.map((label) => ({
+    label,
+    sessions: map.get(label)!,
+    lastActiveAt: map.get(label)![0].lastActiveAt,
+  }));
+}
+
+function ResumeButton({ sessionId }: { sessionId: string }) {
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+
+  async function handleResume(e: React.MouseEvent) {
+    e.stopPropagation();
+    setStatus("loading");
+    try {
+      const result = await resumeSession(sessionId);
+      setStatus(result.ok ? "success" : "error");
+    } catch {
+      setStatus("error");
+    }
+    setTimeout(() => setStatus("idle"), 3000);
+  }
+
+  return (
+    <button
+      className="btn-resume-small"
+      onClick={handleResume}
+      disabled={status === "loading"}
+      title="Resume this session in a new terminal tab"
+    >
+      {status === "loading" ? "..." : status === "success" ? "Opened" : status === "error" ? "Failed" : "Resume"}
+    </button>
+  );
+}
+
+export default function SessionList({ selectedId, onSelect, expanded }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [viewMode, setViewMode] = useState<ViewMode>("project");
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
-  const groups = useMemo(() => groupSessions(sessions), [sessions]);
+  const groups = useMemo(
+    () => viewMode === "project" ? groupByProject(sessions) : groupByTime(sessions),
+    [sessions, viewMode]
+  );
 
   useEffect(() => {
     loadSessions();
@@ -90,7 +159,7 @@ export default function SessionList({ selectedId, onSelect }: Props) {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${expanded ? " sidebar-expanded" : ""}`}>
       <div className="sidebar-header">
         <input
           type="text"
@@ -99,6 +168,22 @@ export default function SessionList({ selectedId, onSelect }: Props) {
           value={search}
           onChange={(e) => handleSearch(e.target.value)}
         />
+        <div className="view-toggle">
+          <button
+            className={`view-toggle-btn ${viewMode === "project" ? "active" : ""}`}
+            onClick={() => setViewMode("project")}
+            title="Group by project"
+          >
+            Project
+          </button>
+          <button
+            className={`view-toggle-btn ${viewMode === "time" ? "active" : ""}`}
+            onClick={() => setViewMode("time")}
+            title="Group by time"
+          >
+            Time
+          </button>
+        </div>
         <button className="btn-reindex" onClick={handleReindex} title="Re-scan sessions">
           Reindex
         </button>
@@ -110,19 +195,21 @@ export default function SessionList({ selectedId, onSelect }: Props) {
           <div className="loading">No sessions found</div>
         ) : (
           groups.map((group) => {
-            const isExpanded = expandedGroups.has(group.projectName);
+            const isExpanded = expandedGroups.has(group.label);
             return (
-              <div key={group.projectName} className="session-group">
+              <div key={group.label} className="session-group">
                 <div
                   className="session-group-header"
-                  onClick={() => toggleGroup(group.projectName)}
+                  onClick={() => toggleGroup(group.label)}
                 >
                   <span className={`group-chevron ${isExpanded ? "expanded" : ""}`}>
                     &#9654;
                   </span>
-                  <span className="project-name">{group.projectName}</span>
+                  <span className="project-name">{group.label}</span>
                   <span className="group-count">{group.sessions.length}</span>
-                  <span className="time-ago">{timeAgo(group.lastActiveAt)}</span>
+                  {viewMode === "project" && (
+                    <span className="time-ago">{timeAgo(group.lastActiveAt)}</span>
+                  )}
                 </div>
                 {isExpanded && (
                   <div className="session-group-items">
@@ -133,6 +220,9 @@ export default function SessionList({ selectedId, onSelect }: Props) {
                         onClick={() => onSelect(s.id)}
                       >
                         <div className="session-card-header">
+                          {viewMode === "time" && (
+                            <span className="card-project-name">{s.projectName}</span>
+                          )}
                           <span className="time-ago">{timeAgo(s.lastActiveAt)}</span>
                         </div>
                         {s.gitBranch && (
@@ -141,9 +231,12 @@ export default function SessionList({ selectedId, onSelect }: Props) {
                         <div className="first-prompt">
                           {s.firstPrompt || "No prompt recorded"}
                         </div>
-                        <div className="session-meta">
-                          <span>{s.messageCount} messages</span>
-                          {s.version && <span>v{s.version}</span>}
+                        <div className="session-card-footer">
+                          <div className="session-meta">
+                            <span>{s.messageCount} messages</span>
+                            {s.version && <span>v{s.version}</span>}
+                          </div>
+                          <ResumeButton sessionId={s.id} />
                         </div>
                       </div>
                     ))}
