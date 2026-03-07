@@ -149,15 +149,47 @@ export function getSession(id: string): Session | null {
 
 export function searchSessions(query: string): Session[] {
   const db = getDb();
+  const normalized = query.trim().toLowerCase();
   const like = `%${query}%`;
+  const normalizedLike = `%${normalized}%`;
+  const prefix = `${normalized}%`;
   const rows = db.prepare(`
     SELECT id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at,
            message_count, version, git_branch, first_prompt, summary
     FROM sessions
     WHERE project_name LIKE ? OR repo_source LIKE ? OR first_prompt LIKE ? OR git_branch LIKE ?
-    ORDER BY last_active_at DESC
+    ORDER BY
+      CASE
+        WHEN lower(COALESCE(repo_source, project_name)) = ? THEN 0
+        WHEN lower(COALESCE(repo_source, project_name)) LIKE ? THEN 1
+        WHEN lower(project_name) = ? THEN 2
+        WHEN lower(project_name) LIKE ? THEN 3
+        WHEN lower(COALESCE(repo_source, project_name)) LIKE ? THEN 4
+        WHEN lower(first_prompt) LIKE ? THEN 5
+        WHEN lower(git_branch) LIKE ? THEN 6
+        ELSE 7
+      END,
+      CASE
+        WHEN instr(lower(COALESCE(repo_source, project_name)), ?) = 0 THEN 9999
+        ELSE instr(lower(COALESCE(repo_source, project_name)), ?)
+      END,
+      last_active_at DESC
     LIMIT 50
-  `).all(like, like, like, like) as Array<Record<string, unknown>>;
+  `).all(
+    like,
+    like,
+    like,
+    like,
+    normalized,
+    prefix,
+    normalized,
+    prefix,
+    normalizedLike,
+    normalizedLike,
+    normalizedLike,
+    normalized,
+    normalized
+  ) as Array<Record<string, unknown>>;
 
   return rows.map(rowToSession);
 }
