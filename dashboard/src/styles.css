@@ -308,56 +308,386 @@ body {
   background: var(--accent);
 }
 
-/* Messages */
-.messages {
+/* ── Timeline layout ─────────────────────────────────── */
+
+.timeline {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
-.message {
+.timeline-group {
   padding: 12px 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
 }
 
-.message-user {
+.timeline-user {
   background: var(--bg-secondary);
   border-left: 3px solid var(--accent);
 }
 
-.message-assistant {
+.timeline-assistant {
   background: var(--bg-tertiary);
   border-left: 3px solid var(--green);
 }
 
-.message-role {
+.timeline-role {
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 4px;
-  color: var(--text-secondary);
+  margin-bottom: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 
-.message-user .message-role {
+.timeline-user .timeline-role {
   color: var(--accent);
 }
 
-.message-assistant .message-role {
+.timeline-assistant .timeline-role {
   color: var(--green);
 }
 
-.message-text {
-  font-size: 14px;
-  white-space: pre-wrap;
-  word-break: break-word;
+.timeline-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.timeline-message {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .message-time {
   font-size: 11px;
   color: var(--text-secondary);
   margin-top: 8px;
+}
+
+/* ── Markdown content ────────────────────────────────── */
+
+.message-text {
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.message-text p {
+  margin: 0 0 8px 0;
+}
+
+.message-text p:last-child {
+  margin-bottom: 0;
+}
+
+.message-text h1,
+.message-text h2,
+.message-text h3,
+.message-text h4 {
+  margin: 16px 0 8px 0;
+  font-weight: 600;
+}
+
+.message-text h1 { font-size: 20px; }
+.message-text h2 { font-size: 17px; }
+.message-text h3 { font-size: 15px; }
+
+.message-text ul,
+.message-text ol {
+  margin: 4px 0 8px 0;
+  padding-left: 20px;
+}
+
+.message-text li {
+  margin-bottom: 2px;
+}
+
+.message-text blockquote {
+  border-left: 3px solid var(--border);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--text-secondary);
+}
+
+.message-text table {
+  border-collapse: collapse;
+  margin: 8px 0;
+  width: 100%;
+}
+
+.message-text th,
+.message-text td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 13px;
+}
+
+.message-text th {
+  background: var(--bg-secondary);
+  font-weight: 600;
+}
+
+.message-text a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.message-text a:hover {
+  text-decoration: underline;
+}
+
+.message-text pre {
+  margin: 8px 0;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+.inline-code {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 12px;
+  padding: 2px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--accent);
+}
+
+.message-text hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
+}
+
+/* ── Thinking blocks ─────────────────────────────────── */
+
+.thinking-block {
+  margin: 4px 0;
+}
+
+.thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--purple);
+  font-size: 12px;
+  cursor: pointer;
+  font-style: italic;
+}
+
+.thinking-toggle:hover {
+  background: var(--bg-secondary);
+}
+
+.thinking-icon {
+  font-style: normal;
+  font-size: 10px;
+}
+
+.thinking-content {
+  margin-top: 6px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--purple);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── Tool blocks ─────────────────────────────────────── */
+
+.tool-block {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: default;
+  min-height: 32px;
+}
+
+.tool-header:has(~ .tool-output),
+.tool-header:has(~ .tool-diff) {
+  cursor: pointer;
+}
+
+.tool-expand {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.tool-icon {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.tool-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tool-command {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-filepath {
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.tool-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-output {
+  padding: 10px 12px;
+  background: var(--bg);
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+/* Tool type colors */
+
+.tool-bash {
+  background: var(--bg);
+}
+
+.tool-bash .tool-icon {
+  color: var(--green);
+}
+
+.tool-bash .tool-header {
+  cursor: pointer;
+}
+
+.tool-read {
+  background: var(--bg);
+}
+
+.tool-read .tool-icon {
+  color: var(--accent);
+}
+
+.tool-edit {
+  background: var(--bg);
+}
+
+.tool-edit .tool-icon {
+  color: #d29922;
+}
+
+.tool-edit .tool-header {
+  cursor: pointer;
+}
+
+.tool-write {
+  background: var(--bg);
+}
+
+.tool-write .tool-icon {
+  color: var(--green);
+}
+
+.tool-write .tool-header {
+  cursor: pointer;
+}
+
+.tool-search {
+  background: var(--bg);
+}
+
+.tool-search .tool-icon {
+  color: var(--purple);
+}
+
+.tool-generic {
+  background: var(--bg);
+}
+
+.tool-generic .tool-icon {
+  color: var(--text-secondary);
+}
+
+.tool-generic .tool-header {
+  cursor: pointer;
+}
+
+/* ── Diff view ───────────────────────────────────────── */
+
+.tool-diff {
+  border-top: 1px solid var(--border);
+  background: var(--bg);
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.tool-diff pre {
+  margin: 0;
+  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.diff-line {
+  padding: 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.diff-remove {
+  background: rgba(248, 81, 73, 0.1);
+  color: #f85149;
+}
+
+.diff-add {
+  background: rgba(63, 185, 80, 0.1);
+  color: #3fb950;
+}
+
+.diff-sign {
+  display: inline-block;
+  width: 16px;
+  font-weight: 700;
+  user-select: none;
 }
 
 /* Scrollbar */
