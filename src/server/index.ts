@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import type { FastifyReply, FastifyRequest } from "fastify";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
@@ -19,8 +20,10 @@ import {
   startWatcher,
   closeDb,
 } from "../core/index.js";
+import type { Session } from "../core/types.js";
 
 const execFileAsync = promisify(execFile);
+const LIVE_WINDOW_MS = 30 * 60 * 1000;
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -65,14 +68,37 @@ function estimateUsageCost(entry: {
   );
 }
 
+function getLiveSessions(sessions: Session[]): Session[] {
+  const cutoff = Date.now() - LIVE_WINDOW_MS;
+  return sessions.filter((session) => {
+    const lastActive = new Date(session.lastActiveAt).getTime();
+    return !Number.isNaN(lastActive) && lastActive >= cutoff;
+  });
+}
+
+function writeSse(reply: FastifyReply, event: string, payload: unknown): void {
+  reply.raw.write(`event: ${event}\n`);
+  reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 export async function createServer(port = 7777) {
   const app = Fastify({ logger: false });
+  const liveClients = new Set<FastifyReply>();
 
   // --- Index: scan and populate on first boot ---
   async function reindex() {
     const sessions = await scanSessions();
     upsertSessions(sessions);
     return sessions.length;
+  }
+
+  async function broadcastLiveSessions() {
+    if (liveClients.size === 0) return;
+    const sessions = getLiveSessions(await scanSessions());
+    const payload = { sessions, timestamp: new Date().toISOString() };
+    for (const client of liveClients) {
+      writeSse(client, "sessions", payload);
+    }
   }
 
   // --- API Routes ---
@@ -173,6 +199,42 @@ export async function createServer(port = 7777) {
     };
   });
 
+  app.get("/api/live-sessions", async () => {
+    const sessions = await scanSessions();
+    return getLiveSessions(sessions);
+  });
+
+  app.get("/api/live-sessions/stream", async (request: FastifyRequest, reply: FastifyReply) => {
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    reply.raw.flushHeaders?.();
+    reply.raw.write("retry: 3000\n\n");
+
+    liveClients.add(reply);
+    const sessions = getLiveSessions(await scanSessions());
+    writeSse(reply, "sessions", {
+      sessions,
+      timestamp: new Date().toISOString(),
+    });
+
+    const keepAlive = setInterval(() => {
+      reply.raw.write(": keep-alive\n\n");
+    }, 15000);
+
+    request.raw.on("close", () => {
+      clearInterval(keepAlive);
+      liveClients.delete(reply);
+      reply.raw.end();
+    });
+
+    return reply;
+  });
+
   app.post<{ Params: { id: string } }>("/api/sessions/:id/resume", async (request, reply) => {
     const { id } = request.params;
     const session = getSession(id);
@@ -233,6 +295,7 @@ end tell`;
   startWatcher(async () => {
     const sessions = await scanSessions();
     upsertSessions(sessions);
+    await broadcastLiveSessions();
   });
 
   await app.listen({ port, host: "127.0.0.1" });

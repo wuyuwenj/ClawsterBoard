@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchSessions, reindex, resumeSession, type Session } from "./api";
 
+type SessionFilterMode = "all" | "live";
+type GroupMode = "project" | "time";
+
 interface Props {
+  viewMode: SessionFilterMode;
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void;
   expanded?: boolean;
 }
-
-type ViewMode = "project" | "time";
 
 interface SessionGroup {
   label: string;
@@ -29,16 +31,16 @@ function timeAgo(dateStr: string): string {
 
 function groupByProject(sessions: Session[]): SessionGroup[] {
   const map = new Map<string, Session[]>();
-  for (const s of sessions) {
-    const list = map.get(s.projectName) ?? [];
-    list.push(s);
-    map.set(s.projectName, list);
+  for (const session of sessions) {
+    const list = map.get(session.projectName) ?? [];
+    list.push(session);
+    map.set(session.projectName, list);
   }
   return Array.from(map.entries())
-    .map(([label, sessions]) => ({
+    .map(([label, groupedSessions]) => ({
       label,
-      sessions,
-      lastActiveAt: sessions[0].lastActiveAt,
+      sessions: groupedSessions,
+      lastActiveAt: groupedSessions[0].lastActiveAt,
     }))
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 }
@@ -63,14 +65,16 @@ function formatTimeSlot(date: Date): string {
 function groupByTime(sessions: Session[]): SessionGroup[] {
   const map = new Map<string, Session[]>();
   const order: string[] = [];
-  for (const s of sessions) {
-    const slot = formatTimeSlot(new Date(s.lastActiveAt));
+
+  for (const session of sessions) {
+    const slot = formatTimeSlot(new Date(session.lastActiveAt));
     if (!map.has(slot)) {
       map.set(slot, []);
       order.push(slot);
     }
-    map.get(slot)!.push(s);
+    map.get(slot)!.push(session);
   }
+
   return order.map((label) => ({
     label,
     sessions: map.get(label)!,
@@ -78,11 +82,17 @@ function groupByTime(sessions: Session[]): SessionGroup[] {
   }));
 }
 
+function isLiveSession(lastActiveAt: string): boolean {
+  const lastActive = new Date(lastActiveAt).getTime();
+  if (Number.isNaN(lastActive)) return false;
+  return Date.now() - lastActive <= 30 * 60 * 1000;
+}
+
 function ResumeButton({ sessionId }: { sessionId: string }) {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
-  async function handleResume(e: React.MouseEvent) {
-    e.stopPropagation();
+  async function handleResume(event: React.MouseEvent) {
+    event.stopPropagation();
     setStatus("loading");
     try {
       const result = await resumeSession(sessionId);
@@ -105,22 +115,38 @@ function ResumeButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-export default function SessionList({ selectedId, onSelect, expanded }: Props) {
+export default function SessionList({ viewMode, selectedId, onSelect, expanded }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-  const [viewMode, setViewMode] = useState<ViewMode>("project");
+  const [groupMode, setGroupMode] = useState<GroupMode>("project");
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
-  const groups = useMemo(
-    () => viewMode === "project" ? groupByProject(sessions) : groupByTime(sessions),
+  const visibleSessions = useMemo(
+    () =>
+      viewMode === "live"
+        ? sessions.filter((session) => isLiveSession(session.lastActiveAt))
+        : sessions,
     [sessions, viewMode]
+  );
+
+  const groups = useMemo(
+    () => (groupMode === "project" ? groupByProject(visibleSessions) : groupByTime(visibleSessions)),
+    [groupMode, visibleSessions]
   );
 
   useEffect(() => {
     loadSessions();
   }, []);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const hasSelectedSession = visibleSessions.some((session) => session.id === selectedId);
+    if (!hasSelectedSession) {
+      onSelect(null);
+    }
+  }, [selectedId, visibleSessions, onSelect]);
 
   async function loadSessions(query?: string) {
     setLoading(true);
@@ -146,13 +172,13 @@ export default function SessionList({ selectedId, onSelect, expanded }: Props) {
     await loadSessions(search || undefined);
   }
 
-  function toggleGroup(projectName: string) {
+  function toggleGroup(label: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(projectName)) {
-        next.delete(projectName);
+      if (next.has(label)) {
+        next.delete(label);
       } else {
-        next.add(projectName);
+        next.add(label);
       }
       return next;
     });
@@ -170,15 +196,15 @@ export default function SessionList({ selectedId, onSelect, expanded }: Props) {
         />
         <div className="view-toggle">
           <button
-            className={`view-toggle-btn ${viewMode === "project" ? "active" : ""}`}
-            onClick={() => setViewMode("project")}
+            className={`view-toggle-btn ${groupMode === "project" ? "active" : ""}`}
+            onClick={() => setGroupMode("project")}
             title="Group by project"
           >
             Project
           </button>
           <button
-            className={`view-toggle-btn ${viewMode === "time" ? "active" : ""}`}
-            onClick={() => setViewMode("time")}
+            className={`view-toggle-btn ${groupMode === "time" ? "active" : ""}`}
+            onClick={() => setGroupMode("time")}
             title="Group by time"
           >
             Time
@@ -189,10 +215,14 @@ export default function SessionList({ selectedId, onSelect, expanded }: Props) {
         </button>
       </div>
       <div className="session-list">
-        {loading && sessions.length === 0 ? (
+        {loading && visibleSessions.length === 0 ? (
           <div className="loading">Loading sessions...</div>
-        ) : sessions.length === 0 ? (
-          <div className="loading">No sessions found</div>
+        ) : visibleSessions.length === 0 ? (
+          <div className="loading">
+            {viewMode === "live"
+              ? "No live sessions in the last 30 minutes"
+              : "No sessions found"}
+          </div>
         ) : (
           groups.map((group) => {
             const isExpanded = expandedGroups.has(group.label);
@@ -207,36 +237,36 @@ export default function SessionList({ selectedId, onSelect, expanded }: Props) {
                   </span>
                   <span className="project-name">{group.label}</span>
                   <span className="group-count">{group.sessions.length}</span>
-                  {viewMode === "project" && (
+                  {groupMode === "project" && (
                     <span className="time-ago">{timeAgo(group.lastActiveAt)}</span>
                   )}
                 </div>
                 {isExpanded && (
                   <div className="session-group-items">
-                    {group.sessions.map((s) => (
+                    {group.sessions.map((session) => (
                       <div
-                        key={s.id}
-                        className={`session-card ${selectedId === s.id ? "selected" : ""}`}
-                        onClick={() => onSelect(s.id)}
+                        key={session.id}
+                        className={`session-card ${selectedId === session.id ? "selected" : ""}`}
+                        onClick={() => onSelect(session.id)}
                       >
                         <div className="session-card-header">
-                          {viewMode === "time" && (
-                            <span className="card-project-name">{s.projectName}</span>
+                          {groupMode === "time" && (
+                            <span className="card-project-name">{session.projectName}</span>
                           )}
-                          <span className="time-ago">{timeAgo(s.lastActiveAt)}</span>
+                          <span className="time-ago">{timeAgo(session.lastActiveAt)}</span>
                         </div>
-                        {s.gitBranch && (
-                          <div className="git-branch">{s.gitBranch}</div>
+                        {session.gitBranch && (
+                          <div className="git-branch">{session.gitBranch}</div>
                         )}
                         <div className="first-prompt">
-                          {s.firstPrompt || "No prompt recorded"}
+                          {session.firstPrompt || "No prompt recorded"}
                         </div>
                         <div className="session-card-footer">
                           <div className="session-meta">
-                            <span>{s.messageCount} messages</span>
-                            {s.version && <span>v{s.version}</span>}
+                            <span>{session.messageCount} messages</span>
+                            {session.version && <span>v{session.version}</span>}
                           </div>
-                          <ResumeButton sessionId={s.id} />
+                          <ResumeButton sessionId={session.id} />
                         </div>
                       </div>
                     ))}

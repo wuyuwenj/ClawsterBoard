@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
+import LiveSessionsView from "./LiveSessionsView";
 import SessionList from "./SessionList";
 import SessionView from "./SessionView";
 import StatsView from "./StatsView";
 
 type View = "sessions" | "stats";
+type ViewMode = "all" | "live";
 
 function viewFromPath(pathname: string): View {
   return pathname === "/stats" ? "stats" : "sessions";
@@ -12,6 +14,7 @@ function viewFromPath(pathname: string): View {
 export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>(() => viewFromPath(window.location.pathname));
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
 
   useEffect(() => {
     function handlePopState() {
@@ -28,6 +31,16 @@ export default function App() {
       window.history.pushState({}, "", nextPath);
     }
     setView(nextView);
+  }
+
+  function openSessionMode(mode: ViewMode) {
+    setViewMode(mode);
+    navigate("sessions");
+  }
+
+  function handleInspectLiveSession(id: string) {
+    setSelectedId(id);
+    openSessionMode("all");
   }
 
   return (
@@ -47,10 +60,16 @@ export default function App() {
         </div>
         <nav className="header-nav" aria-label="Primary">
           <button
-            className={`nav-tab ${view === "sessions" ? "active" : ""}`}
-            onClick={() => navigate("sessions")}
+            className={`nav-tab ${view === "sessions" && viewMode === "all" ? "active" : ""}`}
+            onClick={() => openSessionMode("all")}
           >
-            Sessions
+            All Sessions
+          </button>
+          <button
+            className={`nav-tab ${view === "sessions" && viewMode === "live" ? "active" : ""}`}
+            onClick={() => openSessionMode("live")}
+          >
+            Live
           </button>
           <button
             className={`nav-tab ${view === "stats" ? "active" : ""}`}
@@ -61,18 +80,25 @@ export default function App() {
         </nav>
       </header>
       {view === "sessions" ? (
-        <div className="layout">
-          <SessionList
-            selectedId={selectedId}
-            onSelect={(id) => setSelectedId(id)}
-            expanded={!selectedId}
-          />
-          {selectedId && (
-            <main className="main">
-              <SessionView sessionId={selectedId} />
-            </main>
-          )}
-        </div>
+        viewMode === "live" ? (
+          <main className="main main-live">
+            <LiveSessionsView onInspectSession={handleInspectLiveSession} />
+          </main>
+        ) : (
+          <div className="layout">
+            <SessionList
+              viewMode={viewMode}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              expanded={!selectedId}
+            />
+            {selectedId && (
+              <main className="main">
+                <SessionView sessionId={selectedId} />
+              </main>
+            )}
+          </div>
+        )
       ) : (
         <main className="main main-full">
           <StatsView />

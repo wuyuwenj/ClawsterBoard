@@ -36,6 +36,18 @@ export interface ContentBlock {
   input?: unknown;
 }
 
+export interface FileAction {
+  path: string;
+  actions: ("read" | "edited" | "created")[];
+}
+
+export interface ActivityEntry {
+  timestamp: string;
+  action: string;
+  target: string;
+  tool: string;
+}
+
 export interface Session {
   id: string;
   projectPath: string;
@@ -48,6 +60,12 @@ export interface Session {
   gitBranch?: string;
   firstPrompt?: string;
   summary?: string;
+  filesTouched?: FileAction[];
+  recentActions?: ActivityEntry[];
+  lastAssistantText?: string;
+  lastToolName?: string;
+  lastToolInput?: string;
+  durationSeconds?: number;
 }
 
 export interface SessionDetail extends Session {
