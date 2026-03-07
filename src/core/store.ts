@@ -9,6 +9,17 @@ const DB_PATH = join(CONFIG_DIR, "sessions.db");
 
 let db: Database.Database | null = null;
 
+export interface ProjectActivity {
+  projectName: string;
+  sessionCount: number;
+  messageCount: number;
+}
+
+export interface DailyMessageCount {
+  date: string;
+  messageCount: number;
+}
+
 function getDb(): Database.Database {
   if (db) return db;
 
@@ -125,6 +136,65 @@ export function getSessionCount(): number {
   const db = getDb();
   const row = db.prepare("SELECT COUNT(*) as count FROM sessions").get() as { count: number };
   return row.count;
+}
+
+export function getSessionsThisWeek(): number {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM sessions
+    WHERE datetime(started_at) >= datetime('now', '-7 days')
+  `).get() as { count: number };
+  return row.count;
+}
+
+export function getSessionsLastWeek(): number {
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT COUNT(*) as count
+    FROM sessions
+    WHERE datetime(started_at) >= datetime('now', '-14 days')
+      AND datetime(started_at) < datetime('now', '-7 days')
+  `).get() as { count: number };
+  return row.count;
+}
+
+export function getActiveProjects(limit = 10): ProjectActivity[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      project_name,
+      COUNT(*) as session_count,
+      COALESCE(SUM(message_count), 0) as message_count
+    FROM sessions
+    GROUP BY project_name
+    ORDER BY session_count DESC, message_count DESC, project_name ASC
+    LIMIT ?
+  `).all(limit) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    projectName: row.project_name as string,
+    sessionCount: row.session_count as number,
+    messageCount: row.message_count as number,
+  }));
+}
+
+export function getMessagesPerDay(days = 30): DailyMessageCount[] {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT
+      date(started_at) as date,
+      COALESCE(SUM(message_count), 0) as message_count
+    FROM sessions
+    WHERE date(started_at) >= date('now', ?)
+    GROUP BY date(started_at)
+    ORDER BY date(started_at) ASC
+  `).all(`-${days - 1} days`) as Array<Record<string, unknown>>;
+
+  return rows.map((row) => ({
+    date: row.date as string,
+    messageCount: row.message_count as number,
+  }));
 }
 
 export function closeDb(): void {

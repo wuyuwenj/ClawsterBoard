@@ -37,6 +37,36 @@ export interface SessionDetail extends Session {
   messages: SessionMessage[];
 }
 
+export interface AnalyticsProject {
+  projectName: string;
+  sessionCount: number;
+  messageCount: number;
+}
+
+export interface AnalyticsDay {
+  date: string;
+  messageCount: number;
+}
+
+export interface TokenTotals {
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  totalTokens: number;
+}
+
+export interface AnalyticsData {
+  sessionsThisWeek: number;
+  sessionsLastWeek: number;
+  totalSessions: number;
+  totalTokens: number;
+  estimatedCost: number;
+  tokenTotals: TokenTotals;
+  activeProjects: AnalyticsProject[];
+  messagesPerDay: AnalyticsDay[];
+}
+
 const BASE = "/api";
 
 export async function fetchSessions(query?: string): Promise<Session[]> {
@@ -59,5 +89,10 @@ export async function reindex(): Promise<{ indexed: number }> {
 
 export async function resumeSession(id: string): Promise<{ ok?: boolean; terminal?: string; error?: string }> {
   const res = await fetch(`${BASE}/sessions/${id}/resume`, { method: "POST" });
+  return res.json();
+}
+
+export async function fetchAnalytics(): Promise<AnalyticsData> {
+  const res = await fetch(`${BASE}/analytics`);
   return res.json();
 }

@@ -1,10 +1,20 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { homedir } from "node:os";
-import type { Session, SessionMessage } from "./types.js";
+import type { MessageUsage, Session, SessionMessage } from "./types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
+
+export interface TokenUsageRecord {
+  sessionId: string;
+  projectName: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+}
 
 /**
  * Decode a Claude project folder name back to a readable path.
@@ -31,6 +41,69 @@ function decodeProjectPath(encoded: string): string {
 function projectName(decodedPath: string): string {
   const parts = decodedPath.split("/");
   return parts[parts.length - 1] || decodedPath;
+}
+
+async function collectJsonlFiles(rootDir: string): Promise<string[]> {
+  const files: string[] = [];
+  const entries = await readdir(rootDir, { withFileTypes: true }).catch(() => []);
+
+  for (const entry of entries) {
+    const fullPath = join(rootDir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await collectJsonlFiles(fullPath));
+      continue;
+    }
+
+    if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      files.push(fullPath);
+    }
+  }
+
+  return files;
+}
+
+function coerceUsage(value: unknown): MessageUsage | null {
+  if (!value || typeof value !== "object") return null;
+  return value as MessageUsage;
+}
+
+function usageFromMessage(message: unknown): MessageUsage | null {
+  if (!message || typeof message !== "object") return null;
+  return coerceUsage((message as { usage?: unknown }).usage);
+}
+
+function assistantMessagesFromLine(parsed: any): Array<{ message: any; sessionId: string }> {
+  const entries: Array<{ message: any; sessionId: string }> = [];
+
+  if (parsed.type === "assistant" && parsed.message?.role === "assistant") {
+    entries.push({ message: parsed.message, sessionId: parsed.sessionId });
+  }
+
+  if (parsed.type !== "progress") {
+    return entries;
+  }
+
+  const normalizedMessages = Array.isArray(parsed.data?.normalizedMessages)
+    ? parsed.data.normalizedMessages
+    : [];
+
+  for (const candidate of normalizedMessages) {
+    if (candidate?.type === "assistant" && candidate.message?.role === "assistant") {
+      entries.push({
+        message: candidate.message,
+        sessionId: candidate.sessionId ?? parsed.sessionId,
+      });
+    }
+  }
+
+  if (entries.length === 0 && parsed.data?.message?.type === "assistant") {
+    entries.push({
+      message: parsed.data.message.message,
+      sessionId: parsed.data.message.sessionId ?? parsed.sessionId,
+    });
+  }
+
+  return entries;
 }
 
 /**
@@ -168,6 +241,59 @@ export async function loadSession(sessionId: string): Promise<SessionMessage[] |
   }
 
   return null;
+}
+
+export async function scanTokenUsage(): Promise<TokenUsageRecord[]> {
+  const records: TokenUsageRecord[] = [];
+
+  let projectDirs: string[];
+  try {
+    projectDirs = await readdir(PROJECTS_DIR);
+  } catch {
+    return records;
+  }
+
+  for (const encodedProjectDir of projectDirs) {
+    const projectFullPath = join(PROJECTS_DIR, encodedProjectDir);
+    const dirStat = await stat(projectFullPath).catch(() => null);
+    if (!dirStat?.isDirectory()) continue;
+
+    const decodedPath = decodeProjectPath(encodedProjectDir);
+    const name = projectName(decodedPath);
+    const jsonlFiles = await collectJsonlFiles(projectFullPath);
+
+    for (const filePath of jsonlFiles) {
+      const content = await readFile(filePath, "utf-8").catch(() => "");
+      if (!content) continue;
+
+      for (const line of content.split("\n")) {
+        if (!line.trim()) continue;
+
+        try {
+          const parsed = JSON.parse(line);
+
+          for (const candidate of assistantMessagesFromLine(parsed)) {
+            const usage = usageFromMessage(candidate.message);
+            if (!usage) continue;
+
+            records.push({
+              sessionId: candidate.sessionId || basename(filePath, ".jsonl"),
+              projectName: name,
+              model: candidate.message.model || "unknown",
+              inputTokens: usage.input_tokens ?? 0,
+              outputTokens: usage.output_tokens ?? 0,
+              cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+              cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+            });
+          }
+        } catch {
+          // Skip malformed lines
+        }
+      }
+    }
+  }
+
+  return records;
 }
 
 export { CLAUDE_DIR, PROJECTS_DIR };

@@ -5,12 +5,17 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
   scanSessions,
+  scanTokenUsage,
   loadSession,
   upsertSessions,
   getSessions,
   getSession,
   searchSessions,
   getSessionCount,
+  getSessionsThisWeek,
+  getSessionsLastWeek,
+  getActiveProjects,
+  getMessagesPerDay,
   startWatcher,
   closeDb,
 } from "../core/index.js";
@@ -18,6 +23,47 @@ import {
 const execFileAsync = promisify(execFile);
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+interface ModelRates {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+function ratesForModel(model: string): ModelRates {
+  const normalized = model.toLowerCase();
+
+  if (normalized.includes("opus")) {
+    return { input: 15, output: 75, cacheWrite: 18.75, cacheRead: 1.5 };
+  }
+
+  if (normalized.includes("sonnet")) {
+    return { input: 3, output: 15, cacheWrite: 3.75, cacheRead: 0.3 };
+  }
+
+  if (normalized.includes("haiku")) {
+    return { input: 0.8, output: 4, cacheWrite: 1, cacheRead: 0.08 };
+  }
+
+  return { input: 0, output: 0, cacheWrite: 0, cacheRead: 0 };
+}
+
+function estimateUsageCost(entry: {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+}): number {
+  const rates = ratesForModel(entry.model);
+  return (
+    (entry.inputTokens * rates.input) / 1_000_000 +
+    (entry.outputTokens * rates.output) / 1_000_000 +
+    (entry.cacheCreationTokens * rates.cacheWrite) / 1_000_000 +
+    (entry.cacheReadTokens * rates.cacheRead) / 1_000_000
+  );
+}
 
 export async function createServer(port = 7777) {
   const app = Fastify({ logger: false });
@@ -66,6 +112,65 @@ export async function createServer(port = 7777) {
 
   app.get("/api/stats", async () => {
     return { totalSessions: getSessionCount() };
+  });
+
+  app.get("/api/analytics", async () => {
+    const [
+      sessionsThisWeek,
+      sessionsLastWeek,
+      totalSessions,
+      activeProjects,
+      messagesPerDay,
+      tokenUsage,
+    ] = await Promise.all([
+      Promise.resolve(getSessionsThisWeek()),
+      Promise.resolve(getSessionsLastWeek()),
+      Promise.resolve(getSessionCount()),
+      Promise.resolve(getActiveProjects(10)),
+      Promise.resolve(getMessagesPerDay(30)),
+      scanTokenUsage(),
+    ]);
+
+    const tokenTotals = tokenUsage.reduce(
+      (totals, entry) => {
+        totals.inputTokens += entry.inputTokens;
+        totals.outputTokens += entry.outputTokens;
+        totals.cacheCreationTokens += entry.cacheCreationTokens;
+        totals.cacheReadTokens += entry.cacheReadTokens;
+        totals.totalTokens +=
+          entry.inputTokens +
+          entry.outputTokens +
+          entry.cacheCreationTokens +
+          entry.cacheReadTokens;
+        totals.estimatedCost += estimateUsageCost(entry);
+        return totals;
+      },
+      {
+        inputTokens: 0,
+        outputTokens: 0,
+        cacheCreationTokens: 0,
+        cacheReadTokens: 0,
+        totalTokens: 0,
+        estimatedCost: 0,
+      }
+    );
+
+    return {
+      sessionsThisWeek,
+      sessionsLastWeek,
+      totalSessions,
+      activeProjects,
+      messagesPerDay,
+      tokenTotals: {
+        inputTokens: tokenTotals.inputTokens,
+        outputTokens: tokenTotals.outputTokens,
+        cacheCreationTokens: tokenTotals.cacheCreationTokens,
+        cacheReadTokens: tokenTotals.cacheReadTokens,
+        totalTokens: tokenTotals.totalTokens,
+      },
+      totalTokens: tokenTotals.totalTokens,
+      estimatedCost: Number(tokenTotals.estimatedCost.toFixed(2)),
+    };
   });
 
   app.post<{ Params: { id: string } }>("/api/sessions/:id/resume", async (request, reply) => {
