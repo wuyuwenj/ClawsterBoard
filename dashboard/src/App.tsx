@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import LiveSessionsView from "./LiveSessionsView";
+import InteractiveClawster from "./InteractiveClawster";
 import SessionList from "./SessionList";
 import SessionView from "./SessionView";
 import StatsView from "./StatsView";
@@ -104,6 +105,7 @@ export default function App() {
           <StatsView />
         </main>
       )}
+      <InteractiveClawster />
     </div>
   );
 }
