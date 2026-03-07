@@ -33,9 +33,14 @@ export default function App() {
     setView(nextView);
   }
 
+  function openSessionMode(mode: ViewMode) {
+    setViewMode(mode);
+    navigate("sessions");
+  }
+
   function handleInspectLiveSession(id: string) {
     setSelectedId(id);
-    setViewMode("all");
+    openSessionMode("all");
   }
 
   return (
@@ -55,10 +60,16 @@ export default function App() {
         </div>
         <nav className="header-nav" aria-label="Primary">
           <button
-            className={`nav-tab ${view === "sessions" ? "active" : ""}`}
-            onClick={() => navigate("sessions")}
+            className={`nav-tab ${view === "sessions" && viewMode === "all" ? "active" : ""}`}
+            onClick={() => openSessionMode("all")}
           >
-            Sessions
+            All Sessions
+          </button>
+          <button
+            className={`nav-tab ${view === "sessions" && viewMode === "live" ? "active" : ""}`}
+            onClick={() => openSessionMode("live")}
+          >
+            Live
           </button>
           <button
             className={`nav-tab ${view === "stats" ? "active" : ""}`}
@@ -67,28 +78,6 @@ export default function App() {
             Analytics
           </button>
         </nav>
-        {view === "sessions" && (
-          <div className="header-tabs" role="tablist" aria-label="Session views">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "all"}
-              className={`header-tab ${viewMode === "all" ? "active" : ""}`}
-              onClick={() => setViewMode("all")}
-            >
-              All Sessions
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "live"}
-              className={`header-tab ${viewMode === "live" ? "active" : ""}`}
-              onClick={() => setViewMode("live")}
-            >
-              Live
-            </button>
-          </div>
-        )}
       </header>
       {view === "sessions" ? (
         viewMode === "live" ? (
