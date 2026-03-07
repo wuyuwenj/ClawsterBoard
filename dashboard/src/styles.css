@@ -1,3 +1,7 @@
+/* ==========================================================================
+   CLAWSTER DASHBOARD - CORE THEME
+   ========================================================================== */
+
 * {
   margin: 0;
   padding: 0;
@@ -5,50 +9,98 @@
 }
 
 :root {
-  --bg: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --border: #30363d;
-  --text: #e6edf3;
-  --text-secondary: #8b949e;
-  --accent: #58a6ff;
-  --accent-dim: #1f6feb;
-  --green: #3fb950;
-  --purple: #bc8cff;
-  --card-hover: #1c2128;
+  /* Core Palette */
+  --bg-base: #090a0c;
+  --bg-panel: #121418;
+  --bg-card: #1c1f26;
+  --bg-card-hover: #232730;
+
+  /* Accents */
+  --accent-coral: #FF8C69;
+  --accent-teal: #008080;
+  --accent-crimson: #C44536;
+
+  /* Text */
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #475569;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-focus: rgba(255, 140, 105, 0.3);
+
+  /* Layout */
+  --sidebar-width: 320px;
+  --header-height: 64px;
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
-    Helvetica, Arial, sans-serif;
-  background: var(--bg);
-  color: var(--text);
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace, sans-serif;
+  overflow: hidden;
   line-height: 1.5;
 }
 
+/* ==========================================================================
+   APP LAYOUT & WATERMARK
+   ========================================================================== */
+
 .app {
-  height: 100vh;
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  position: relative;
+  z-index: 1;
+}
+
+/* The massive Clawster background abstraction */
+.app::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: -1;
+  opacity: 0.05;
+  pointer-events: none;
+  background-image: url('data:image/svg+xml;utf8,<svg viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg"><g transform="translate(-1050, -1000) scale(25)"><rect x="34" y="28" width="60" height="75" rx="30" fill="%231c1f26"/><path d="M 88 55 A 24 24 0 1 0 118 85 Q 108 80 103 75 Q 108 65 98 70 Z" fill="%23C44536"/><path d="M 34 82 Q 64 92 94 82 L 94 88 Q 64 98 34 88 Z" fill="none" stroke="%23008080" stroke-width="0.5"/></g></svg>');
+  background-size: cover;
+  background-position: center;
 }
 
 .header {
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
+  height: var(--header-height);
   display: flex;
-  align-items: baseline;
-  gap: 12px;
-  background: var(--bg-secondary);
+  align-items: center;
+  padding: 0 24px;
+  background: rgba(18, 20, 24, 0.7);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+  gap: 16px;
 }
 
 .header h1 {
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.header-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-coral);
+  cursor: pointer;
+  letter-spacing: -0.5px;
 }
 
 .subtitle {
   font-size: 13px;
   color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
 }
 
 .layout {
@@ -57,86 +109,127 @@ body {
   overflow: hidden;
 }
 
-/* Sidebar */
+/* ==========================================================================
+   SIDEBAR (SessionList.tsx)
+   ========================================================================== */
+
 .sidebar {
-  width: 360px;
-  border-right: 1px solid var(--border);
+  width: var(--sidebar-width);
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  background: var(--bg-secondary);
+  transition: width 0.3s ease;
 }
 
 .sidebar.sidebar-expanded {
   width: 100%;
   border-right: none;
+  background: transparent;
 }
 
 .sidebar-header {
-  padding: 12px;
+  padding: 16px;
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .search {
   flex: 1;
-  padding: 8px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
-  color: var(--text);
+  padding: 8px 12px;
+  color: var(--text-primary);
   font-size: 13px;
   outline: none;
+  transition: border-color 0.2s;
 }
 
 .search:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
+}
+
+/* View toggle */
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.view-toggle-btn:first-child {
+  border-right: 1px solid var(--border-subtle);
+}
+
+.view-toggle-btn.active {
+  background: var(--bg-card);
+  color: var(--accent-coral);
+}
+
+.view-toggle-btn:hover:not(.active) {
+  color: var(--text-secondary);
 }
 
 .btn-reindex {
-  padding: 8px 12px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
   color: var(--text-secondary);
-  font-size: 12px;
+  border-radius: 6px;
+  padding: 8px 12px;
   cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .btn-reindex:hover {
-  color: var(--text);
-  border-color: var(--text-secondary);
+  background: var(--bg-card);
+  color: var(--text-primary);
 }
 
 .session-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 12px;
 }
 
 /* Session groups */
 .session-group {
-  margin-bottom: 2px;
+  margin-bottom: 16px;
 }
 
 .session-group-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 8px;
   cursor: pointer;
   border-radius: 6px;
+  transition: background 0.2s;
   user-select: none;
 }
 
 .session-group-header:hover {
-  background: var(--card-hover);
+  background: rgba(255, 255, 255, 0.03);
 }
 
 .group-chevron {
   font-size: 10px;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   transition: transform 0.15s ease;
   display: inline-block;
   flex-shrink: 0;
@@ -146,12 +239,20 @@ body {
   transform: rotate(90deg);
 }
 
+.project-name {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+}
+
 .group-count {
-  font-size: 11px;
-  color: var(--text-secondary);
-  background: var(--bg-tertiary);
-  padding: 0 6px;
+  background: var(--bg-card);
+  padding: 2px 6px;
   border-radius: 10px;
+  font-size: 11px;
+  color: var(--accent-teal);
+  border: 1px solid rgba(0, 128, 128, 0.3);
   line-height: 18px;
 }
 
@@ -159,72 +260,121 @@ body {
   margin-left: auto;
 }
 
+.time-ago {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Session Cards */
 .session-group-items {
-  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  padding-left: 16px;
 }
 
 .session-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
   padding: 12px;
-  border-radius: 6px;
   cursor: pointer;
-  border: 1px solid transparent;
-  margin-bottom: 4px;
+  transition: all 0.2s;
 }
 
 .session-card:hover {
-  background: var(--card-hover);
+  background: var(--bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-1px);
 }
 
 .session-card.selected {
-  background: var(--bg-tertiary);
-  border-color: var(--accent-dim);
+  background: var(--bg-card-hover);
+  border-color: var(--accent-coral);
 }
 
 .session-card-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
+  gap: 8px;
   margin-bottom: 4px;
 }
 
-.project-name {
+.card-project-name {
   font-weight: 600;
-  font-size: 14px;
-  color: var(--accent);
-}
-
-.time-ago {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--accent-coral);
+  margin-right: auto;
 }
 
 .git-branch {
-  font-size: 12px;
-  color: var(--purple);
-  margin-bottom: 4px;
+  display: inline-block;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--accent-teal);
+  background: rgba(0, 128, 128, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-bottom: 8px;
 }
 
 .first-prompt {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  line-height: 1.4;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  margin-bottom: 6px;
+}
+
+.session-card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
 }
 
 .session-meta {
   display: flex;
-  gap: 12px;
+  gap: 8px;
   font-size: 11px;
   color: var(--text-secondary);
 }
 
-/* Main content */
+/* Resume Button (sidebar) */
+.btn-resume-small {
+  background: rgba(255, 140, 105, 0.1);
+  color: var(--accent-coral);
+  border: 1px solid rgba(255, 140, 105, 0.2);
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.btn-resume-small:hover {
+  background: var(--accent-coral);
+  color: var(--bg-base);
+}
+
+/* ==========================================================================
+   MAIN PANEL (SessionView.tsx)
+   ========================================================================== */
+
 .main {
   flex: 1;
-  overflow-y: auto;
-  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(9, 10, 12, 0.8);
+  backdrop-filter: blur(8px);
 }
 
 .empty-state {
@@ -245,24 +395,30 @@ body {
 
 /* Session view */
 .session-view {
-  max-width: 800px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .session-header {
+  padding: 24px 32px;
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  margin-bottom: 12px;
 }
 
 .session-header h2 {
-  font-size: 20px;
+  margin: 0 0 4px 0;
+  font-size: 24px;
   font-weight: 600;
+  color: #fff;
 }
 
 .session-path {
-  font-size: 13px;
-  color: var(--text-secondary);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .session-info {
@@ -272,106 +428,216 @@ body {
 }
 
 .badge {
-  font-size: 12px;
-  padding: 2px 8px;
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: "JetBrains Mono", monospace;
   color: var(--text-secondary);
   white-space: nowrap;
 }
 
 .session-id {
+  padding: 12px 32px;
+  background: rgba(0, 0, 0, 0.2);
+  border-bottom: 1px solid var(--border-subtle);
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 24px;
-  padding: 8px 12px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: 6px;
 }
 
 .session-id code {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: "JetBrains Mono", monospace;
 }
 
 .btn-resume {
-  padding: 6px 12px;
-  background: var(--accent-dim);
+  background: var(--accent-coral);
+  color: var(--bg-base);
   border: none;
   border-radius: 6px;
-  color: white;
-  font-size: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
+  box-shadow: 0 4px 12px rgba(255, 140, 105, 0.2);
+  transition: transform 0.2s, box-shadow 0.2s;
   white-space: nowrap;
 }
 
 .btn-resume:hover {
-  background: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(255, 140, 105, 0.3);
 }
 
-/* ── Timeline layout ─────────────────────────────────── */
+/* ==========================================================================
+   TIMELINE & MESSAGES
+   ========================================================================== */
 
 .timeline {
+  flex: 1;
+  overflow-y: auto;
+  padding: 32px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 32px;
 }
 
 .timeline-group {
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-}
-
-.timeline-user {
-  background: var(--bg-secondary);
-  border-left: 3px solid var(--accent);
-}
-
-.timeline-assistant {
-  background: var(--bg-tertiary);
-  border-left: 3px solid var(--green);
+  display: flex;
+  flex-direction: column;
+  position: relative;
 }
 
 .timeline-role {
-  font-size: 12px;
-  font-weight: 600;
-  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
 }
 
-.timeline-user .timeline-role {
-  color: var(--accent);
-}
-
-.timeline-assistant .timeline-role {
-  color: var(--green);
-}
+.timeline-user .timeline-role { color: var(--accent-coral); }
+.timeline-assistant .timeline-role { color: var(--accent-teal); }
 
 .timeline-content {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .timeline-message {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d1d5db;
 }
 
 .message-time {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-top: 8px;
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: 10px;
+  color: var(--text-muted);
 }
 
-/* ── Markdown content ────────────────────────────────── */
+/* ==========================================================================
+   TOOL BLOCKS (Bash, Read, Edit, etc.)
+   ========================================================================== */
+
+.tool-block {
+  margin-top: 12px;
+  background: #000;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  font-family: "JetBrains Mono", monospace;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: default;
+  min-height: 32px;
+}
+
+.tool-expand {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-secondary);
+}
+
+.tool-icon {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  font-weight: 700;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+  color: var(--accent-teal);
+}
+
+.tool-label {
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.tool-command {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-filepath {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--accent-coral);
+}
+
+.tool-description {
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-output {
+  padding: 10px 12px;
+  background: var(--bg-base);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  border-top: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  max-height: 300px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+}
+
+/* Tool type colors */
+.tool-bash { background: var(--bg-base); }
+.tool-bash .tool-icon { color: var(--accent-teal); }
+.tool-bash .tool-header { cursor: pointer; }
+
+.tool-read { background: var(--bg-base); }
+.tool-read .tool-icon { color: var(--accent-coral); }
+
+.tool-edit { background: var(--bg-base); }
+.tool-edit .tool-icon { color: #d29922; }
+.tool-edit .tool-header { cursor: pointer; }
+
+.tool-write { background: var(--bg-base); }
+.tool-write .tool-icon { color: var(--accent-teal); }
+.tool-write .tool-header { cursor: pointer; }
+
+.tool-search { background: var(--bg-base); }
+.tool-search .tool-icon { color: var(--accent-crimson); }
+
+.tool-generic { background: var(--bg-base); }
+.tool-generic .tool-icon { color: var(--text-secondary); }
+.tool-generic .tool-header { cursor: pointer; }
+
+/* ==========================================================================
+   MARKDOWN CONTENT
+   ========================================================================== */
 
 .message-text {
   font-size: 14px;
@@ -410,7 +676,7 @@ body {
 }
 
 .message-text blockquote {
-  border-left: 3px solid var(--border);
+  border-left: 3px solid var(--border-subtle);
   padding-left: 12px;
   margin: 8px 0;
   color: var(--text-secondary);
@@ -424,19 +690,19 @@ body {
 
 .message-text th,
 .message-text td {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   padding: 6px 10px;
   text-align: left;
   font-size: 13px;
 }
 
 .message-text th {
-  background: var(--bg-secondary);
+  background: var(--bg-panel);
   font-weight: 600;
 }
 
 .message-text a {
-  color: var(--accent);
+  color: var(--accent-coral);
   text-decoration: none;
 }
 
@@ -451,22 +717,24 @@ body {
 }
 
 .inline-code {
-  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   padding: 2px 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  color: var(--accent);
+  color: var(--accent-coral);
 }
 
 .message-text hr {
   border: none;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-subtle);
   margin: 12px 0;
 }
 
-/* ── Thinking blocks ─────────────────────────────────── */
+/* ==========================================================================
+   THINKING BLOCKS
+   ========================================================================== */
 
 .thinking-block {
   margin: 4px 0;
@@ -477,17 +745,17 @@ body {
   align-items: center;
   gap: 6px;
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   padding: 6px 10px;
-  color: var(--purple);
+  color: var(--accent-teal);
   font-size: 12px;
   cursor: pointer;
   font-style: italic;
 }
 
 .thinking-toggle:hover {
-  background: var(--bg-secondary);
+  background: var(--bg-panel);
 }
 
 .thinking-icon {
@@ -498,9 +766,9 @@ body {
 .thinking-content {
   margin-top: 6px;
   padding: 10px 12px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-left: 2px solid var(--purple);
+  background: var(--bg-base);
+  border: 1px solid var(--border-subtle);
+  border-left: 2px solid var(--accent-teal);
   border-radius: 6px;
   font-size: 13px;
   color: var(--text-secondary);
@@ -508,166 +776,20 @@ body {
   overflow-y: auto;
 }
 
-/* ── Tool blocks ─────────────────────────────────────── */
-
-.tool-block {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.tool-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  font-size: 13px;
-  cursor: default;
-  min-height: 32px;
-}
-
-.tool-header:has(~ .tool-output),
-.tool-header:has(~ .tool-diff) {
-  cursor: pointer;
-}
-
-.tool-expand {
-  margin-left: auto;
-  font-size: 10px;
-  color: var(--text-secondary);
-}
-
-.tool-icon {
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 12px;
-  font-weight: 700;
-  width: 18px;
-  text-align: center;
-  flex-shrink: 0;
-}
-
-.tool-label {
-  font-weight: 600;
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
-.tool-command {
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 12px;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tool-filepath {
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 12px;
-  color: var(--accent);
-}
-
-.tool-description {
-  font-size: 12px;
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tool-output {
-  padding: 10px 12px;
-  background: var(--bg);
-  font-family: "SF Mono", "Fira Code", monospace;
-  font-size: 12px;
-  line-height: 1.5;
-  border-top: 1px solid var(--border);
-  overflow-x: auto;
-  max-height: 300px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--text-secondary);
-}
-
-/* Tool type colors */
-
-.tool-bash {
-  background: var(--bg);
-}
-
-.tool-bash .tool-icon {
-  color: var(--green);
-}
-
-.tool-bash .tool-header {
-  cursor: pointer;
-}
-
-.tool-read {
-  background: var(--bg);
-}
-
-.tool-read .tool-icon {
-  color: var(--accent);
-}
-
-.tool-edit {
-  background: var(--bg);
-}
-
-.tool-edit .tool-icon {
-  color: #d29922;
-}
-
-.tool-edit .tool-header {
-  cursor: pointer;
-}
-
-.tool-write {
-  background: var(--bg);
-}
-
-.tool-write .tool-icon {
-  color: var(--green);
-}
-
-.tool-write .tool-header {
-  cursor: pointer;
-}
-
-.tool-search {
-  background: var(--bg);
-}
-
-.tool-search .tool-icon {
-  color: var(--purple);
-}
-
-.tool-generic {
-  background: var(--bg);
-}
-
-.tool-generic .tool-icon {
-  color: var(--text-secondary);
-}
-
-.tool-generic .tool-header {
-  cursor: pointer;
-}
-
-/* ── Diff view ───────────────────────────────────────── */
+/* ==========================================================================
+   DIFF VIEW
+   ========================================================================== */
 
 .tool-diff {
-  border-top: 1px solid var(--border);
-  background: var(--bg);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-base);
   max-height: 400px;
   overflow-y: auto;
 }
 
 .tool-diff pre {
   margin: 0;
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -679,13 +801,13 @@ body {
 }
 
 .diff-remove {
-  background: rgba(248, 81, 73, 0.1);
-  color: #f85149;
+  background: rgba(196, 69, 54, 0.15);
+  color: var(--accent-crimson);
 }
 
 .diff-add {
-  background: rgba(63, 185, 80, 0.1);
-  color: #3fb950;
+  background: rgba(0, 128, 128, 0.15);
+  color: var(--accent-teal);
 }
 
 .diff-sign {
@@ -695,9 +817,12 @@ body {
   user-select: none;
 }
 
-/* Scrollbar */
+/* ==========================================================================
+   SCROLLBAR
+   ========================================================================== */
+
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -705,10 +830,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.2);
 }

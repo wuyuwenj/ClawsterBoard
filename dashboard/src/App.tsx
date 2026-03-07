@@ -8,7 +8,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="header">
-        <h1>Clawster</h1>
+        <h1 className="header-title" onClick={() => setSelectedId(null)}>Clawster</h1>
         <span className="subtitle">Claude Code Session Dashboard</span>
       </header>
       <div className="layout">
