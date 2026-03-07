@@ -584,10 +584,21 @@ body {
   color: var(--text-secondary);
 }
 
+.live-line-current {
+  align-items: flex-start;
+}
+
 .live-label {
   color: var(--accent);
   min-width: 64px;
   text-transform: lowercase;
+}
+
+.live-current-action {
+  text-align: right;
+  color: var(--text);
+  max-width: 70%;
+  line-height: 1.45;
 }
 
 .live-block {

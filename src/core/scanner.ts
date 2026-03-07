@@ -1,7 +1,14 @@
 import { readdir, readFile, stat } from "node:fs/promises";
-import { join, basename } from "node:path";
+import { join } from "node:path";
 import { homedir } from "node:os";
-import type { MessageUsage, Session, SessionMessage } from "./types.js";
+import type {
+  ActivityEntry,
+  ContentBlock,
+  FileAction,
+  MessageUsage,
+  Session,
+  SessionMessage,
+} from "./types.js";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 const PROJECTS_DIR = join(CLAUDE_DIR, "projects");
@@ -130,6 +137,187 @@ async function parseSessionFile(filePath: string): Promise<SessionMessage[]> {
   return messages;
 }
 
+function toInputRecord(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return {};
+  }
+  return input as Record<string, unknown>;
+}
+
+function truncateText(value: string | undefined, maxLength: number): string | undefined {
+  if (!value) return undefined;
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+}
+
+function summarizeToolInput(name: string, input: Record<string, unknown>): string | undefined {
+  if (typeof input.file_path === "string") {
+    return truncateText(input.file_path, 100);
+  }
+  if (name === "Bash" && typeof input.command === "string") {
+    return truncateText(input.command, 100);
+  }
+  if ((name === "Glob" || name === "Grep") && typeof input.pattern === "string") {
+    return truncateText(input.pattern, 100);
+  }
+  if ((name === "Glob" || name === "Grep") && typeof input.query === "string") {
+    return truncateText(input.query, 100);
+  }
+
+  const firstEntry = Object.entries(input)[0];
+  if (!firstEntry) return undefined;
+  return truncateText(`${firstEntry[0]}: ${String(firstEntry[1])}`, 100);
+}
+
+function describeToolUse(name: string, input: Record<string, unknown>): ActivityEntry | null {
+  if (name === "Read" && typeof input.file_path === "string") {
+    return {
+      timestamp: "",
+      action: "Read",
+      target: truncateText(input.file_path, 140) || input.file_path,
+      tool: name,
+    };
+  }
+
+  if (name === "Edit" && typeof input.file_path === "string") {
+    return {
+      timestamp: "",
+      action: "Edited",
+      target: truncateText(input.file_path, 140) || input.file_path,
+      tool: name,
+    };
+  }
+
+  if (name === "Write" && typeof input.file_path === "string") {
+    return {
+      timestamp: "",
+      action: "Created",
+      target: truncateText(input.file_path, 140) || input.file_path,
+      tool: name,
+    };
+  }
+
+  if (name === "Bash" && typeof input.command === "string") {
+    return {
+      timestamp: "",
+      action: "Ran",
+      target: truncateText(input.command, 140) || input.command,
+      tool: name,
+    };
+  }
+
+  if (name === "Glob" || name === "Grep") {
+    const target =
+      typeof input.pattern === "string"
+        ? input.pattern
+        : typeof input.query === "string"
+        ? input.query
+        : undefined;
+    if (target) {
+      return {
+        timestamp: "",
+        action: "Searched",
+        target: truncateText(target, 140) || target,
+        tool: name,
+      };
+    }
+  }
+
+  const summary = summarizeToolInput(name, input);
+  if (!summary) return null;
+
+  return {
+    timestamp: "",
+    action: name,
+    target: summary,
+    tool: name,
+  };
+}
+
+function extractLastAssistantText(messages: SessionMessage[]): string | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.type !== "assistant" || msg.isMeta || !msg.message) continue;
+    const content = msg.message.content;
+    if (typeof content === "string") {
+      return truncateText(content.trim(), 200);
+    }
+    if (!Array.isArray(content)) continue;
+
+    for (let j = content.length - 1; j >= 0; j--) {
+      const block = content[j];
+      if (block.type === "text" && block.text) {
+        return truncateText(block.text.trim(), 200);
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function extractLiveMetadata(messages: SessionMessage[]): Pick<
+  Session,
+  "filesTouched" | "recentActions" | "lastAssistantText" | "lastToolName" | "lastToolInput" | "durationSeconds"
+> {
+  const fileActions = new Map<string, Set<FileAction["actions"][number]>>();
+  const recentActions: ActivityEntry[] = [];
+  let lastToolName: string | undefined;
+  let lastToolInput: string | undefined;
+
+  for (const msg of messages) {
+    if (!msg.message || !Array.isArray(msg.message.content)) continue;
+
+    for (const block of msg.message.content as ContentBlock[]) {
+      if (block.type !== "tool_use" || !block.name) continue;
+
+      const input = toInputRecord(block.input);
+      const activity = describeToolUse(block.name, input);
+      if (activity) {
+        recentActions.push({
+          ...activity,
+          timestamp: msg.timestamp,
+        });
+      }
+
+      if (typeof input.file_path === "string") {
+        const current = fileActions.get(input.file_path) ?? new Set<FileAction["actions"][number]>();
+        if (block.name === "Read") current.add("read");
+        if (block.name === "Edit") current.add("edited");
+        if (block.name === "Write") current.add("created");
+        fileActions.set(input.file_path, current);
+      }
+
+      lastToolName = block.name;
+      lastToolInput = summarizeToolInput(block.name, input);
+    }
+  }
+
+  const filesTouched = Array.from(fileActions.entries()).map(([path, actions]) => ({
+    path,
+    actions: Array.from(actions),
+  }));
+
+  const durationSeconds =
+    messages.length > 1
+      ? Math.max(
+          0,
+          Math.round(
+            (new Date(messages[messages.length - 1].timestamp).getTime() -
+              new Date(messages[0].timestamp).getTime()) /
+              1000
+          )
+        )
+      : 0;
+
+  return {
+    filesTouched,
+    recentActions: recentActions.slice(-10),
+    lastAssistantText: extractLastAssistantText(messages),
+    lastToolName,
+    lastToolInput,
+    durationSeconds,
+  };
+}
+
 /**
  * Extract the first user prompt text from a list of messages.
  */
@@ -204,6 +392,7 @@ export async function scanSessions(): Promise<Session[]> {
           version: firstMsg.version,
           gitBranch: firstMsg.gitBranch || undefined,
           firstPrompt: extractFirstPrompt(messages),
+          ...extractLiveMetadata(messages),
         });
       } catch {
         // Skip unreadable files

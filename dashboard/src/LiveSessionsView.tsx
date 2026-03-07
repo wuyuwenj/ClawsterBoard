@@ -1,5 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchSessions, resumeSession, type Session } from "./api";
+import {
+  fetchLiveSessions,
+  resumeSession,
+  subscribeToLiveSessions,
+  type Session,
+} from "./api";
 
 const LIVE_WINDOW_MS = 30 * 60 * 1000;
 const MAX_LIVE_SESSIONS = 6;
@@ -36,6 +41,31 @@ function clampText(text: string | undefined, fallback: string): string {
   return compact || fallback;
 }
 
+function describeLatestActivity(session: Session): string {
+  const latest = session.recentActions?.[session.recentActions.length - 1];
+  if (latest) {
+    return `${latest.action} ${latest.target}`;
+  }
+  if (session.lastToolName && session.lastToolInput) {
+    return `${session.lastToolName} ${session.lastToolInput}`;
+  }
+  if (session.lastAssistantText) {
+    return session.lastAssistantText;
+  }
+  return clampText(session.summary || session.firstPrompt, "No summary recorded yet.");
+}
+
+function getCurrentAction(session: Session): string {
+  const latest = session.recentActions?.[session.recentActions.length - 1];
+  if (latest) {
+    return `${latest.action} ${latest.target}`;
+  }
+  if (session.lastToolName && session.lastToolInput) {
+    return `${session.lastToolName} ${session.lastToolInput}`;
+  }
+  return "Waiting for next event";
+}
+
 function getGridClassName(count: number): string {
   if (count <= 1) return "live-grid live-grid-1";
   if (count === 2) return "live-grid live-grid-2";
@@ -50,10 +80,11 @@ export default function LiveSessionsView({ onInspectSession }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    let fallbackTimer: number | undefined;
 
     async function loadSessions() {
       try {
-        const data = await fetchSessions();
+        const data = await fetchLiveSessions();
         if (!cancelled) {
           setSessions(data);
         }
@@ -64,12 +95,27 @@ export default function LiveSessionsView({ onInspectSession }: Props) {
       }
     }
 
+    function startFallbackPolling() {
+      if (fallbackTimer) return;
+      fallbackTimer = window.setInterval(() => {
+        void loadSessions();
+      }, 5000);
+    }
+
     loadSessions();
-    const timer = window.setInterval(loadSessions, 15000);
+    const unsubscribe = subscribeToLiveSessions((data) => {
+      if (!cancelled) {
+        setSessions(data);
+        setLoading(false);
+      }
+    }, startFallbackPolling);
 
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      if (fallbackTimer) {
+        window.clearInterval(fallbackTimer);
+      }
+      unsubscribe();
     };
   }, []);
 
@@ -86,8 +132,7 @@ export default function LiveSessionsView({ onInspectSession }: Props) {
   );
 
   const hiddenCount = useMemo(() => {
-    const liveCount = sessions.filter((session) => isLiveSession(session.lastActiveAt)).length;
-    return Math.max(0, liveCount - MAX_LIVE_SESSIONS);
+    return Math.max(0, sessions.length - MAX_LIVE_SESSIONS);
   }, [sessions]);
 
   async function handleResume(id: string) {
@@ -161,14 +206,15 @@ export default function LiveSessionsView({ onInspectSession }: Props) {
                   <span className="live-label">updated</span>
                   <span>{new Date(session.lastActiveAt).toLocaleTimeString()}</span>
                 </div>
+                <div className="live-line live-line-current">
+                  <span className="live-label">current</span>
+                  <span className="live-current-action">{getCurrentAction(session)}</span>
+                </div>
 
                 <div className="live-block">
-                  <div className="live-block-label">summary</div>
+                  <div className="live-block-label">live</div>
                   <p>
-                    {clampText(
-                      session.summary || session.firstPrompt,
-                      "No summary recorded yet."
-                    )}
+                    {describeLatestActivity(session)}
                   </p>
                 </div>
               </div>
