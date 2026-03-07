@@ -1,15 +1,15 @@
 import { useEffect, useState } from "react";
+import LiveSessionsView from "./LiveSessionsView";
 import SessionList from "./SessionList";
 import SessionView from "./SessionView";
 import StatsView from "./StatsView";
 
 type View = "sessions" | "stats";
+type ViewMode = "all" | "live";
 
 function viewFromPath(pathname: string): View {
   return pathname === "/stats" ? "stats" : "sessions";
 }
-
-type ViewMode = "all" | "live";
 
 export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -31,6 +31,11 @@ export default function App() {
       window.history.pushState({}, "", nextPath);
     }
     setView(nextView);
+  }
+
+  function handleInspectLiveSession(id: string) {
+    setSelectedId(id);
+    setViewMode("all");
   }
 
   return (
@@ -63,42 +68,48 @@ export default function App() {
           </button>
         </nav>
         {view === "sessions" && (
-        <div className="header-tabs" role="tablist" aria-label="Session views">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === "all"}
-            className={`header-tab ${viewMode === "all" ? "active" : ""}`}
-            onClick={() => setViewMode("all")}
-          >
-            All Sessions
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === "live"}
-            className={`header-tab ${viewMode === "live" ? "active" : ""}`}
-            onClick={() => setViewMode("live")}
-          >
-            Live
-          </button>
-        </div>
+          <div className="header-tabs" role="tablist" aria-label="Session views">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "all"}
+              className={`header-tab ${viewMode === "all" ? "active" : ""}`}
+              onClick={() => setViewMode("all")}
+            >
+              All Sessions
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "live"}
+              className={`header-tab ${viewMode === "live" ? "active" : ""}`}
+              onClick={() => setViewMode("live")}
+            >
+              Live
+            </button>
+          </div>
         )}
       </header>
       {view === "sessions" ? (
-        <div className="layout">
-          <SessionList
-            viewMode={viewMode}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            expanded={!selectedId}
-          />
-          {selectedId && (
-            <main className="main">
-              <SessionView sessionId={selectedId} />
-            </main>
-          )}
-        </div>
+        viewMode === "live" ? (
+          <main className="main main-live">
+            <LiveSessionsView onInspectSession={handleInspectLiveSession} />
+          </main>
+        ) : (
+          <div className="layout">
+            <SessionList
+              viewMode={viewMode}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              expanded={!selectedId}
+            />
+            {selectedId && (
+              <main className="main">
+                <SessionView sessionId={selectedId} />
+              </main>
+            )}
+          </div>
+        )
       ) : (
         <main className="main main-full">
           <StatsView />

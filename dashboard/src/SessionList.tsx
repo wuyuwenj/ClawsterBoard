@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchSessions, reindex, resumeSession, type Session } from "./api";
 
 type SessionFilterMode = "all" | "live";
@@ -31,16 +31,16 @@ function timeAgo(dateStr: string): string {
 
 function groupByProject(sessions: Session[]): SessionGroup[] {
   const map = new Map<string, Session[]>();
-  for (const s of sessions) {
-    const list = map.get(s.projectName) ?? [];
-    list.push(s);
-    map.set(s.projectName, list);
+  for (const session of sessions) {
+    const list = map.get(session.projectName) ?? [];
+    list.push(session);
+    map.set(session.projectName, list);
   }
   return Array.from(map.entries())
-    .map(([label, sessions]) => ({
+    .map(([label, groupedSessions]) => ({
       label,
-      sessions,
-      lastActiveAt: sessions[0].lastActiveAt,
+      sessions: groupedSessions,
+      lastActiveAt: groupedSessions[0].lastActiveAt,
     }))
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 }
@@ -65,14 +65,16 @@ function formatTimeSlot(date: Date): string {
 function groupByTime(sessions: Session[]): SessionGroup[] {
   const map = new Map<string, Session[]>();
   const order: string[] = [];
-  for (const s of sessions) {
-    const slot = formatTimeSlot(new Date(s.lastActiveAt));
+
+  for (const session of sessions) {
+    const slot = formatTimeSlot(new Date(session.lastActiveAt));
     if (!map.has(slot)) {
       map.set(slot, []);
       order.push(slot);
     }
-    map.get(slot)!.push(s);
+    map.get(slot)!.push(session);
   }
+
   return order.map((label) => ({
     label,
     sessions: map.get(label)!,
@@ -80,11 +82,17 @@ function groupByTime(sessions: Session[]): SessionGroup[] {
   }));
 }
 
+function isLiveSession(lastActiveAt: string): boolean {
+  const lastActive = new Date(lastActiveAt).getTime();
+  if (Number.isNaN(lastActive)) return false;
+  return Date.now() - lastActive <= 30 * 60 * 1000;
+}
+
 function ResumeButton({ sessionId }: { sessionId: string }) {
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
 
-  async function handleResume(e: React.MouseEvent) {
-    e.stopPropagation();
+  async function handleResume(event: React.MouseEvent) {
+    event.stopPropagation();
     setStatus("loading");
     try {
       const result = await resumeSession(sessionId);
@@ -107,12 +115,6 @@ function ResumeButton({ sessionId }: { sessionId: string }) {
   );
 }
 
-function isLiveSession(lastActiveAt: string): boolean {
-  const lastActive = new Date(lastActiveAt).getTime();
-  if (Number.isNaN(lastActive)) return false;
-  return Date.now() - lastActive <= 30 * 60 * 1000;
-}
-
 export default function SessionList({ viewMode, selectedId, onSelect, expanded }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [search, setSearch] = useState("");
@@ -121,27 +123,17 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
   const [groupMode, setGroupMode] = useState<GroupMode>("project");
   const debounce = useRef<ReturnType<typeof setTimeout>>();
 
-  const groups = useMemo(
-    () =>
-      groupMode === "project"
-        ? groupByProject(
-            viewMode === "live"
-              ? sessions.filter((session) => isLiveSession(session.lastActiveAt))
-              : sessions
-          )
-        : groupByTime(
-            viewMode === "live"
-              ? sessions.filter((session) => isLiveSession(session.lastActiveAt))
-              : sessions
-          ),
-    [sessions, groupMode, viewMode]
-  );
   const visibleSessions = useMemo(
     () =>
       viewMode === "live"
         ? sessions.filter((session) => isLiveSession(session.lastActiveAt))
         : sessions,
     [sessions, viewMode]
+  );
+
+  const groups = useMemo(
+    () => (groupMode === "project" ? groupByProject(visibleSessions) : groupByTime(visibleSessions)),
+    [groupMode, visibleSessions]
   );
 
   useEffect(() => {
@@ -180,13 +172,13 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
     await loadSessions(search || undefined);
   }
 
-  function toggleGroup(projectName: string) {
+  function toggleGroup(label: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(projectName)) {
-        next.delete(projectName);
+      if (next.has(label)) {
+        next.delete(label);
       } else {
-        next.add(projectName);
+        next.add(label);
       }
       return next;
     });
@@ -251,30 +243,30 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
                 </div>
                 {isExpanded && (
                   <div className="session-group-items">
-                    {group.sessions.map((s) => (
+                    {group.sessions.map((session) => (
                       <div
-                        key={s.id}
-                        className={`session-card ${selectedId === s.id ? "selected" : ""}`}
-                        onClick={() => onSelect(s.id)}
+                        key={session.id}
+                        className={`session-card ${selectedId === session.id ? "selected" : ""}`}
+                        onClick={() => onSelect(session.id)}
                       >
                         <div className="session-card-header">
                           {groupMode === "time" && (
-                            <span className="card-project-name">{s.projectName}</span>
+                            <span className="card-project-name">{session.projectName}</span>
                           )}
-                          <span className="time-ago">{timeAgo(s.lastActiveAt)}</span>
+                          <span className="time-ago">{timeAgo(session.lastActiveAt)}</span>
                         </div>
-                        {s.gitBranch && (
-                          <div className="git-branch">{s.gitBranch}</div>
+                        {session.gitBranch && (
+                          <div className="git-branch">{session.gitBranch}</div>
                         )}
                         <div className="first-prompt">
-                          {s.firstPrompt || "No prompt recorded"}
+                          {session.firstPrompt || "No prompt recorded"}
                         </div>
                         <div className="session-card-footer">
                           <div className="session-meta">
-                            <span>{s.messageCount} messages</span>
-                            {s.version && <span>v{s.version}</span>}
+                            <span>{session.messageCount} messages</span>
+                            {session.version && <span>v{session.version}</span>}
                           </div>
-                          <ResumeButton sessionId={s.id} />
+                          <ResumeButton sessionId={session.id} />
                         </div>
                       </div>
                     ))}
