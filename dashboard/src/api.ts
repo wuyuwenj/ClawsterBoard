@@ -56,3 +56,8 @@ export async function reindex(): Promise<{ indexed: number }> {
   const res = await fetch(`${BASE}/reindex`, { method: "POST" });
   return res.json();
 }
+
+export async function resumeSession(id: string): Promise<{ ok?: boolean; terminal?: string; error?: string }> {
+  const res = await fetch(`${BASE}/sessions/${id}/resume`, { method: "POST" });
+  return res.json();
+}
