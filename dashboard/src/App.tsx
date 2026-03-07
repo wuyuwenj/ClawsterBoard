@@ -15,16 +15,13 @@ export default function App() {
         <SessionList
           selectedId={selectedId}
           onSelect={(id) => setSelectedId(id)}
+          expanded={!selectedId}
         />
-        <main className="main">
-          {selectedId ? (
+        {selectedId && (
+          <main className="main">
             <SessionView sessionId={selectedId} />
-          ) : (
-            <div className="empty-state">
-              <p>Select a session to view details</p>
-            </div>
-          )}
-        </main>
+          </main>
+        )}
       </div>
     </div>
   );

@@ -66,6 +66,11 @@ body {
   background: var(--bg-secondary);
 }
 
+.sidebar.sidebar-expanded {
+  width: 100%;
+  border-right: none;
+}
+
 .sidebar-header {
   padding: 12px;
   display: flex;

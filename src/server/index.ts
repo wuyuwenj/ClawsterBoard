@@ -108,7 +108,7 @@ end tell`;
   await app.register(import("@fastify/static"), {
     root: dashboardPath,
     prefix: "/",
-    decorateReply: false,
+    decorateReply: true,
   });
 
   // SPA fallback: serve index.html for non-API, non-file routes

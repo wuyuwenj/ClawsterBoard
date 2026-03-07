@@ -4,6 +4,7 @@ import { fetchSessions, reindex, type Session } from "./api";
 interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
+  expanded?: boolean;
 }
 
 interface SessionGroup {
@@ -40,7 +41,7 @@ function groupSessions(sessions: Session[]): SessionGroup[] {
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 }
 
-export default function SessionList({ selectedId, onSelect }: Props) {
+export default function SessionList({ selectedId, onSelect, expanded }: Props) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -90,7 +91,7 @@ export default function SessionList({ selectedId, onSelect }: Props) {
   }
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${expanded ? " sidebar-expanded" : ""}`}>
       <div className="sidebar-header">
         <input
           type="text"
