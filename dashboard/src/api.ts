@@ -2,6 +2,8 @@ export interface Session {
   id: string;
   projectPath: string;
   projectName: string;
+  repoKey?: string;
+  repoSource?: string;
   cwd: string;
   startedAt: string;
   lastActiveAt: string;

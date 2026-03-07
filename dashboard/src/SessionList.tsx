@@ -12,9 +12,33 @@ interface Props {
 }
 
 interface SessionGroup {
+  key: string;
   label: string;
   sessions: Session[];
   lastActiveAt: string;
+}
+
+function normalizeSearchValue(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function labelMatchScore(label: string, query: string): number {
+  const normalizedLabel = normalizeSearchValue(label);
+  const normalizedQuery = normalizeSearchValue(query);
+
+  if (!normalizedQuery) return 0;
+  if (normalizedLabel === normalizedQuery) return 500;
+  if (normalizedLabel.startsWith(normalizedQuery)) return 400;
+
+  const segmentMatch = normalizedLabel
+    .split(/[\/\-_ .]+/)
+    .some((segment) => segment.startsWith(normalizedQuery));
+  if (segmentMatch) return 300;
+
+  const containsIndex = normalizedLabel.indexOf(normalizedQuery);
+  if (containsIndex >= 0) return 200 - containsIndex;
+
+  return 0;
 }
 
 function timeAgo(dateStr: string): string {
@@ -29,20 +53,61 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString();
 }
 
-function groupByProject(sessions: Session[]): SessionGroup[] {
-  const map = new Map<string, Session[]>();
-  for (const session of sessions) {
-    const list = map.get(session.projectName) ?? [];
-    list.push(session);
-    map.set(session.projectName, list);
+function uniqueProjectNames(sessions: Session[]): string[] {
+  return Array.from(new Set(sessions.map((session) => session.projectName).filter(Boolean)));
+}
+
+function displayGroupLabel(sessions: Session[]): string {
+  const primary = sessions[0];
+  const repoSource = primary.repoSource;
+  if (!repoSource) {
+    return primary.projectName;
   }
+
+  const normalizedRepoSource = repoSource.toLowerCase();
+  const extras = uniqueProjectNames(sessions).filter(
+    (projectName) => !normalizedRepoSource.includes(projectName.toLowerCase())
+  );
+
+  if (extras.length === 1) {
+    return `${repoSource} (${extras[0]})`;
+  }
+
+  if (extras.length > 1) {
+    return `${repoSource} (${extras.length} local folders)`;
+  }
+
+  return repoSource;
+}
+
+function groupByProject(sessions: Session[], query?: string): SessionGroup[] {
+  const map = new Map<string, Session[]>();
+
+  for (const session of sessions) {
+    const groupKey = session.repoKey || session.repoSource || session.projectName;
+    const list = map.get(groupKey) ?? [];
+    list.push(session);
+    map.set(groupKey, list);
+  }
+
   return Array.from(map.entries())
-    .map(([label, groupedSessions]) => ({
-      label,
+    .map(([key, groupedSessions]) => ({
+      key,
+      label: displayGroupLabel(groupedSessions),
       sessions: groupedSessions,
       lastActiveAt: groupedSessions[0].lastActiveAt,
     }))
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+    .sort((a, b) => {
+      const scoreDiff = labelMatchScore(b.label, query || "") - labelMatchScore(a.label, query || "");
+      if (scoreDiff !== 0) return scoreDiff;
+      return new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime();
+    });
+}
+
+function shortProjectPath(projectPath: string): string {
+  const parts = projectPath.split("/");
+  if (parts.length <= 3) return projectPath;
+  return `.../${parts.slice(-2).join("/")}`;
 }
 
 function formatTimeSlot(date: Date): string {
@@ -76,6 +141,7 @@ function groupByTime(sessions: Session[]): SessionGroup[] {
   }
 
   return order.map((label) => ({
+    key: label,
     label,
     sessions: map.get(label)!,
     lastActiveAt: map.get(label)![0].lastActiveAt,
@@ -132,8 +198,8 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
   );
 
   const groups = useMemo(
-    () => (groupMode === "project" ? groupByProject(visibleSessions) : groupByTime(visibleSessions)),
-    [groupMode, visibleSessions]
+    () => (groupMode === "project" ? groupByProject(visibleSessions, search) : groupByTime(visibleSessions)),
+    [groupMode, visibleSessions, search]
   );
 
   useEffect(() => {
@@ -172,13 +238,13 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
     await loadSessions(search || undefined);
   }
 
-  function toggleGroup(label: string) {
+  function toggleGroup(key: string) {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(label)) {
-        next.delete(label);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(label);
+        next.add(key);
       }
       return next;
     });
@@ -198,9 +264,9 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
           <button
             className={`view-toggle-btn ${groupMode === "project" ? "active" : ""}`}
             onClick={() => setGroupMode("project")}
-            title="Group by project"
+            title="Group by repository source"
           >
-            Project
+            Repo
           </button>
           <button
             className={`view-toggle-btn ${groupMode === "time" ? "active" : ""}`}
@@ -225,12 +291,12 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
           </div>
         ) : (
           groups.map((group) => {
-            const isExpanded = expandedGroups.has(group.label);
+            const isExpanded = expandedGroups.has(group.key);
             return (
-              <div key={group.label} className="session-group">
+              <div key={group.key} className="session-group">
                 <div
                   className="session-group-header"
-                  onClick={() => toggleGroup(group.label)}
+                  onClick={() => toggleGroup(group.key)}
                 >
                   <span className={`group-chevron ${isExpanded ? "expanded" : ""}`}>
                     &#9654;
@@ -251,13 +317,16 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
                       >
                         <div className="session-card-header">
                           {groupMode === "time" && (
-                            <span className="card-project-name">{session.projectName}</span>
+                            <span className="card-project-name">{session.repoSource || session.projectName}</span>
                           )}
                           <span className="time-ago">{timeAgo(session.lastActiveAt)}</span>
                         </div>
                         {session.gitBranch && (
                           <div className="git-branch">{session.gitBranch}</div>
                         )}
+                        <div className="session-source">
+                          {shortProjectPath(session.projectPath)}
+                        </div>
                         <div className="first-prompt">
                           {session.firstPrompt || "No prompt recorded"}
                         </div>

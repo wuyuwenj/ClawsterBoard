@@ -390,6 +390,13 @@ body {
   margin-bottom: 8px;
 }
 
+.session-source {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
 .first-prompt {
   font-size: 13px;
   color: var(--text-primary);

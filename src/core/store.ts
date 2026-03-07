@@ -33,6 +33,8 @@ function getDb(): Database.Database {
       id TEXT PRIMARY KEY,
       project_path TEXT NOT NULL,
       project_name TEXT NOT NULL,
+      repo_key TEXT,
+      repo_source TEXT,
       cwd TEXT NOT NULL,
       started_at TEXT NOT NULL,
       last_active_at TEXT NOT NULL,
@@ -51,15 +53,41 @@ function getDb(): Database.Database {
       ON sessions(project_name);
   `);
 
+  ensureColumn(db, "sessions", "repo_key", "TEXT");
+  ensureColumn(db, "sessions", "repo_source", "TEXT");
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_sessions_repo_key
+      ON sessions(repo_key);
+  `);
+
   return db;
+}
+
+function ensureColumn(
+  database: Database.Database,
+  tableName: string,
+  columnName: string,
+  definition: string
+): void {
+  const columns = database.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === columnName)) {
+    return;
+  }
+
+  database.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
 }
 
 export function upsertSession(session: Session): void {
   const db = getDb();
   db.prepare(`
-    INSERT INTO sessions (id, project_path, project_name, cwd, started_at, last_active_at, message_count, version, git_branch, first_prompt, summary, updated_at)
-    VALUES (@id, @projectPath, @projectName, @cwd, @startedAt, @lastActiveAt, @messageCount, @version, @gitBranch, @firstPrompt, @summary, datetime('now'))
+    INSERT INTO sessions (id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at, message_count, version, git_branch, first_prompt, summary, updated_at)
+    VALUES (@id, @projectPath, @projectName, @repoKey, @repoSource, @cwd, @startedAt, @lastActiveAt, @messageCount, @version, @gitBranch, @firstPrompt, @summary, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
+      project_path = @projectPath,
+      project_name = @projectName,
+      repo_key = @repoKey,
+      repo_source = @repoSource,
+      cwd = @cwd,
       last_active_at = @lastActiveAt,
       message_count = @messageCount,
       version = @version,
@@ -71,6 +99,8 @@ export function upsertSession(session: Session): void {
     id: session.id,
     projectPath: session.projectPath,
     projectName: session.projectName,
+    repoKey: session.repoKey ?? null,
+    repoSource: session.repoSource ?? null,
     cwd: session.cwd,
     startedAt: session.startedAt,
     lastActiveAt: session.lastActiveAt,
@@ -95,7 +125,7 @@ export function upsertSessions(sessions: Session[]): void {
 export function getSessions(limit = 100, offset = 0): Session[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT id, project_path, project_name, cwd, started_at, last_active_at,
+    SELECT id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at,
            message_count, version, git_branch, first_prompt, summary
     FROM sessions
     ORDER BY last_active_at DESC
@@ -108,7 +138,7 @@ export function getSessions(limit = 100, offset = 0): Session[] {
 export function getSession(id: string): Session | null {
   const db = getDb();
   const row = db.prepare(`
-    SELECT id, project_path, project_name, cwd, started_at, last_active_at,
+    SELECT id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at,
            message_count, version, git_branch, first_prompt, summary
     FROM sessions
     WHERE id = ?
@@ -119,15 +149,47 @@ export function getSession(id: string): Session | null {
 
 export function searchSessions(query: string): Session[] {
   const db = getDb();
+  const normalized = query.trim().toLowerCase();
   const like = `%${query}%`;
+  const normalizedLike = `%${normalized}%`;
+  const prefix = `${normalized}%`;
   const rows = db.prepare(`
-    SELECT id, project_path, project_name, cwd, started_at, last_active_at,
+    SELECT id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at,
            message_count, version, git_branch, first_prompt, summary
     FROM sessions
-    WHERE project_name LIKE ? OR first_prompt LIKE ? OR git_branch LIKE ?
-    ORDER BY last_active_at DESC
+    WHERE project_name LIKE ? OR repo_source LIKE ? OR first_prompt LIKE ? OR git_branch LIKE ?
+    ORDER BY
+      CASE
+        WHEN lower(COALESCE(repo_source, project_name)) = ? THEN 0
+        WHEN lower(COALESCE(repo_source, project_name)) LIKE ? THEN 1
+        WHEN lower(project_name) = ? THEN 2
+        WHEN lower(project_name) LIKE ? THEN 3
+        WHEN lower(COALESCE(repo_source, project_name)) LIKE ? THEN 4
+        WHEN lower(first_prompt) LIKE ? THEN 5
+        WHEN lower(git_branch) LIKE ? THEN 6
+        ELSE 7
+      END,
+      CASE
+        WHEN instr(lower(COALESCE(repo_source, project_name)), ?) = 0 THEN 9999
+        ELSE instr(lower(COALESCE(repo_source, project_name)), ?)
+      END,
+      last_active_at DESC
     LIMIT 50
-  `).all(like, like, like) as Array<Record<string, unknown>>;
+  `).all(
+    like,
+    like,
+    like,
+    like,
+    normalized,
+    prefix,
+    normalized,
+    prefix,
+    normalizedLike,
+    normalizedLike,
+    normalizedLike,
+    normalized,
+    normalized
+  ) as Array<Record<string, unknown>>;
 
   return rows.map(rowToSession);
 }
@@ -163,11 +225,11 @@ export function getActiveProjects(limit = 10): ProjectActivity[] {
   const db = getDb();
   const rows = db.prepare(`
     SELECT
-      project_name,
+      COALESCE(MAX(NULLIF(repo_source, '')), project_name) as project_name,
       COUNT(*) as session_count,
       COALESCE(SUM(message_count), 0) as message_count
     FROM sessions
-    GROUP BY project_name
+    GROUP BY COALESCE(NULLIF(repo_key, ''), project_path)
     ORDER BY session_count DESC, message_count DESC, project_name ASC
     LIMIT ?
   `).all(limit) as Array<Record<string, unknown>>;
@@ -209,6 +271,8 @@ function rowToSession(row: Record<string, unknown>): Session {
     id: row.id as string,
     projectPath: row.project_path as string,
     projectName: row.project_name as string,
+    repoKey: (row.repo_key as string | null) ?? undefined,
+    repoSource: (row.repo_source as string | null) ?? undefined,
     cwd: row.cwd as string,
     startedAt: row.started_at as string,
     lastActiveAt: row.last_active_at as string,
