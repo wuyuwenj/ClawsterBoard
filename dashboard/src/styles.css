@@ -32,6 +32,9 @@
   /* Layout */
   --sidebar-width: 320px;
   --header-height: 64px;
+
+  /* Cursor */
+  --cursor-claw: url("./assets/cursor-claw.svg") 3 3;
 }
 
 body {
@@ -42,6 +45,22 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "JetBrains Mono", monospace, sans-serif;
   overflow: hidden;
   line-height: 1.5;
+  cursor: var(--cursor-claw), auto;
+}
+
+button,
+a,
+[role="button"],
+.header-title,
+.session-card,
+.session-group-header {
+  cursor: var(--cursor-claw), pointer;
+}
+
+input,
+textarea,
+[contenteditable="true"] {
+  cursor: text;
 }
 
 /* ==========================================================================
@@ -177,6 +196,96 @@ body {
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+/* ==========================================================================
+   CLAWSTER COMPANION
+   ========================================================================== */
+
+.clawster-companion {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 160px;
+  height: 160px;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.clawster-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+  touch-action: none;
+  user-select: none;
+}
+
+.clawster-glow {
+  position: absolute;
+  inset: 34px;
+  border-radius: 999px;
+  filter: blur(26px);
+  opacity: 0.42;
+}
+
+.clawster-shadow {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  width: 76px;
+  height: 20px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 72%);
+}
+
+.clawster-body {
+  position: absolute;
+  inset: 16px;
+  display: grid;
+  place-items: center;
+  transform-origin: center bottom;
+}
+
+.clawster-image {
+  width: 128px;
+  height: 128px;
+  object-fit: contain;
+  pointer-events: none;
+  filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.45));
+}
+
+.clawster-speech {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 84px;
+  max-width: 150px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 20, 24, 0.82);
+  backdrop-filter: blur(14px);
+  color: var(--text-primary);
+  font-size: 12px;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  pointer-events: none;
+}
+
+.clawster-speech-tail {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid rgba(255, 255, 255, 0.16);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(18, 20, 24, 0.82);
+  transform: translateX(-50%) rotate(45deg);
 }
 
 /* ==========================================================================
