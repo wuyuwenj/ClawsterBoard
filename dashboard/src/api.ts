@@ -24,11 +24,13 @@ export interface SessionMessage {
   };
 }
 
-interface ContentBlock {
+export interface ContentBlock {
   type: string;
   text?: string;
   thinking?: string;
   name?: string;
+  input?: Record<string, unknown>;
+  content?: string | ContentBlock[];
 }
 
 export interface SessionDetail extends Session {
