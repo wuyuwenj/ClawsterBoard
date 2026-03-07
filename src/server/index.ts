@@ -1,6 +1,8 @@
 import Fastify from "fastify";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import {
   scanSessions,
   loadSession,
@@ -12,6 +14,8 @@ import {
   startWatcher,
   closeDb,
 } from "../core/index.js";
+
+const execFileAsync = promisify(execFile);
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 
@@ -62,6 +66,40 @@ export async function createServer(port = 7777) {
 
   app.get("/api/stats", async () => {
     return { totalSessions: getSessionCount() };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/sessions/:id/resume", async (request, reply) => {
+    const { id } = request.params;
+    const session = getSession(id);
+    if (!session) {
+      return reply.status(404).send({ error: "Session not found" });
+    }
+
+    const { cwd } = session;
+
+    try {
+      // Detect if iTerm2 is running
+      const { stdout } = await execFileAsync("osascript", [
+        "-e",
+        'tell application "System Events" to (name of processes) contains "iTerm2"',
+      ]);
+      const iTermRunning = stdout.trim() === "true";
+
+      if (iTermRunning) {
+        const bridgePath = join(__dirname, "..", "..", "python", "clawster_iterm.py");
+        await execFileAsync("python3", [bridgePath, "resume", id, cwd]);
+        return { ok: true, terminal: "iTerm2" };
+      } else {
+        const script = `tell application "Terminal"
+  activate
+  do script "cd ${cwd.replace(/"/g, '\\"')} && claude -r ${id}"
+end tell`;
+        await execFileAsync("osascript", ["-e", script]);
+        return { ok: true, terminal: "Terminal" };
+      }
+    } catch (err: any) {
+      return reply.status(500).send({ error: err.message || "Failed to open terminal" });
+    }
   });
 
   // --- Serve React dashboard (static files) ---

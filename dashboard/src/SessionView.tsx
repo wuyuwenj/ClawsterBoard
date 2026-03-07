@@ -1,10 +1,11 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import {
   fetchSession,
+  resumeSession,
   type SessionDetail,
   type SessionMessage,
   type ContentBlock,
@@ -376,12 +377,39 @@ function MessageContent({
 export default function SessionView({ sessionId }: Props) {
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [resumeStatus, setResumeStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [resumeMessage, setResumeMessage] = useState("");
 
   useEffect(() => {
     setLoading(true);
     fetchSession(sessionId)
       .then(setDetail)
       .finally(() => setLoading(false));
+  }, [sessionId]);
+
+  useEffect(() => {
+    setResumeStatus("idle");
+    setResumeMessage("");
+  }, [sessionId]);
+
+  const handleResume = useCallback(async () => {
+    setResumeStatus("loading");
+    try {
+      const result = await resumeSession(sessionId);
+      if (result.ok) {
+        setResumeStatus("success");
+        setResumeMessage(`Opened in ${result.terminal}`);
+        setTimeout(() => setResumeStatus("idle"), 3000);
+      } else {
+        setResumeStatus("error");
+        setResumeMessage(result.error || "Failed to open terminal");
+        setTimeout(() => setResumeStatus("idle"), 5000);
+      }
+    } catch {
+      setResumeStatus("error");
+      setResumeMessage("Failed to connect to server");
+      setTimeout(() => setResumeStatus("idle"), 5000);
+    }
   }, [sessionId]);
 
   if (loading) return <div className="loading">Loading session...</div>;
@@ -432,14 +460,17 @@ export default function SessionView({ sessionId }: Props) {
         <code>{detail.id}</code>
         <button
           className="btn-resume"
-          onClick={() => {
-            navigator.clipboard.writeText(
-              `cd ${detail.cwd} && claude -r ${detail.id}`
-            );
-          }}
-          title="Copy resume command (includes cd to project directory)"
+          onClick={handleResume}
+          disabled={resumeStatus === "loading"}
+          title="Open a new terminal tab and resume this Claude Code session"
         >
-          Copy Resume Command
+          {resumeStatus === "loading"
+            ? "Opening..."
+            : resumeStatus === "success"
+            ? resumeMessage
+            : resumeStatus === "error"
+            ? resumeMessage
+            : "Resume Session"}
         </button>
       </div>
 
