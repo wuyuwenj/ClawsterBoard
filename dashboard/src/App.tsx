@@ -3,13 +3,16 @@ import LiveSessionsView from "./LiveSessionsView";
 import InteractiveClawster from "./InteractiveClawster";
 import SessionList from "./SessionList";
 import SessionView from "./SessionView";
+import SettingsView from "./SettingsView";
 import StatsView from "./StatsView";
 
-type View = "sessions" | "stats";
+type View = "sessions" | "stats" | "settings";
 type ViewMode = "all" | "live";
 
 function viewFromPath(pathname: string): View {
-  return pathname === "/stats" ? "stats" : "sessions";
+  if (pathname === "/stats") return "stats";
+  if (pathname === "/settings") return "settings";
+  return "sessions";
 }
 
 export default function App() {
@@ -27,7 +30,7 @@ export default function App() {
   }, []);
 
   function navigate(nextView: View) {
-    const nextPath = nextView === "stats" ? "/stats" : "/";
+    const nextPath = nextView === "stats" ? "/stats" : nextView === "settings" ? "/settings" : "/";
     if (window.location.pathname !== nextPath) {
       window.history.pushState({}, "", nextPath);
     }
@@ -55,7 +58,7 @@ export default function App() {
               navigate("sessions");
             }}
           >
-            Clawster
+            Clawster HQ
           </h1>
           <span className="subtitle">Claude Code Session Dashboard</span>
         </div>
@@ -77,6 +80,12 @@ export default function App() {
             onClick={() => navigate("stats")}
           >
             Analytics
+          </button>
+          <button
+            className={`nav-tab ${view === "settings" ? "active" : ""}`}
+            onClick={() => navigate("settings")}
+          >
+            Settings
           </button>
         </nav>
       </header>
@@ -100,6 +109,10 @@ export default function App() {
             )}
           </div>
         )
+      ) : view === "settings" ? (
+        <main className="main main-full">
+          <SettingsView />
+        </main>
       ) : (
         <main className="main main-full">
           <StatsView />

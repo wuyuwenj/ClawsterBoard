@@ -137,3 +137,49 @@ export async function fetchAnalytics(): Promise<AnalyticsData> {
   const res = await fetch(`${BASE}/analytics`);
   return res.json();
 }
+
+export interface SummaryStatus {
+  configured: boolean;
+  hasStoredKey: boolean;
+  hasEnvKey: boolean;
+  pendingCount: number;
+}
+
+export interface ApiKeyStatus {
+  hasKey: boolean;
+  maskedKey: string | null;
+}
+
+export async function fetchSummaryStatus(): Promise<SummaryStatus> {
+  const res = await fetch(`${BASE}/summary-status`);
+  return res.json();
+}
+
+export async function triggerSummaryProcessing(): Promise<{ processed: number; error?: string }> {
+  const res = await fetch(`${BASE}/summaries/process`, { method: "POST" });
+  return res.json();
+}
+
+export async function summarizeSession(id: string): Promise<{ summary?: string; error?: string }> {
+  const res = await fetch(`${BASE}/sessions/${id}/summarize`, { method: "POST" });
+  return res.json();
+}
+
+export async function fetchApiKeyStatus(): Promise<ApiKeyStatus> {
+  const res = await fetch(`${BASE}/settings/api-key`);
+  return res.json();
+}
+
+export async function saveApiKey(apiKey: string): Promise<{ success?: boolean; error?: string }> {
+  const res = await fetch(`${BASE}/settings/api-key`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ apiKey }),
+  });
+  return res.json();
+}
+
+export async function deleteApiKey(): Promise<{ success?: boolean }> {
+  const res = await fetch(`${BASE}/settings/api-key`, { method: "DELETE" });
+  return res.json();
+}
