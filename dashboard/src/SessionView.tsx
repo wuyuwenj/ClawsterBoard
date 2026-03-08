@@ -474,6 +474,13 @@ export default function SessionView({ sessionId }: Props) {
         </button>
       </div>
 
+      {detail.summary && (
+        <div className="session-summary">
+          <span className="summary-badge">AI Summary</span>
+          <p>{detail.summary}</p>
+        </div>
+      )}
+
       <div className="timeline">
         {groups.map((group, gi) => (
           <div

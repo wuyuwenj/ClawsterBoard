@@ -327,15 +327,23 @@ export default function SessionList({ viewMode, selectedId, onSelect, expanded }
                         <div className="session-source">
                           {shortProjectPath(session.projectPath)}
                         </div>
-                        <div className="first-prompt">
-                          {session.firstPrompt || "No prompt recorded"}
-                        </div>
+                        {expanded && (
+                          <div className="first-prompt">
+                            {session.firstPrompt || "No prompt recorded"}
+                          </div>
+                        )}
+                        {expanded && session.summary && (
+                          <div className="session-card-summary">
+                            <span className="summary-indicator">AI</span>
+                            <span className="summary-text">{session.summary}</span>
+                          </div>
+                        )}
                         <div className="session-card-footer">
                           <div className="session-meta">
                             <span>{session.messageCount} messages</span>
                             {session.version && <span>v{session.version}</span>}
                           </div>
-                          <ResumeButton sessionId={session.id} />
+                          {expanded && <ResumeButton sessionId={session.id} />}
                         </div>
                       </div>
                     ))}

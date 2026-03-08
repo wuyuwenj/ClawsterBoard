@@ -17,8 +17,17 @@ import {
   getSessionsLastWeek,
   getActiveProjects,
   getMessagesPerDay,
+  getSessionsNeedingSummary,
+  updateSessionSummary,
+  getSetting,
+  setSetting,
+  deleteSetting,
   startWatcher,
   closeDb,
+  createSummaryProcessor,
+  isApiKeyConfigured,
+  getStoredApiKey,
+  summarizeSession,
 } from "../core/index.js";
 import type { Session } from "../core/types.js";
 
@@ -84,6 +93,13 @@ function writeSse(reply: FastifyReply, event: string, payload: unknown): void {
 export async function createServer(port = 7777) {
   const app = Fastify({ logger: false });
   const liveClients = new Set<FastifyReply>();
+
+  // --- Summary processor for background AI summarization ---
+  const summaryProcessor = createSummaryProcessor(
+    getSessionsNeedingSummary,
+    loadSession,
+    updateSessionSummary
+  );
 
   // --- Index: scan and populate on first boot ---
   async function reindex() {
@@ -269,6 +285,90 @@ end tell`;
     }
   });
 
+  // --- AI Summary endpoints ---
+
+  app.get("/api/summary-status", async () => {
+    const pendingSessions = getSessionsNeedingSummary();
+    const storedKey = getStoredApiKey();
+    return {
+      configured: isApiKeyConfigured(),
+      hasStoredKey: Boolean(storedKey),
+      hasEnvKey: Boolean(process.env.OPENAI_API_KEY),
+      pendingCount: pendingSessions.length,
+    };
+  });
+
+  app.get("/api/settings/api-key", async () => {
+    const storedKey = getStoredApiKey();
+    // Only return masked version for security
+    if (storedKey) {
+      const masked = storedKey.slice(0, 7) + "..." + storedKey.slice(-4);
+      return { hasKey: true, maskedKey: masked };
+    }
+    return { hasKey: false, maskedKey: null };
+  });
+
+  app.post("/api/settings/api-key", async (request) => {
+    const { apiKey } = request.body as { apiKey?: string };
+
+    if (!apiKey || typeof apiKey !== "string") {
+      return { error: "API key is required" };
+    }
+
+    // Basic validation
+    if (!apiKey.startsWith("sk-")) {
+      return { error: "Invalid API key format" };
+    }
+
+    setSetting("openai_api_key", apiKey);
+
+    // Start the summary processor if it wasn't running
+    if (!summaryProcessor) {
+      // Processor will be started on next check
+    }
+
+    return { success: true };
+  });
+
+  app.delete("/api/settings/api-key", async () => {
+    deleteSetting("openai_api_key");
+    return { success: true };
+  });
+
+  app.post("/api/summaries/process", async () => {
+    if (!isApiKeyConfigured()) {
+      return { error: "OPENAI_API_KEY not configured", processed: 0 };
+    }
+    const processed = await summaryProcessor.processNow();
+    return { processed };
+  });
+
+  app.post<{ Params: { id: string } }>("/api/sessions/:id/summarize", async (request, reply) => {
+    const { id } = request.params;
+
+    if (!isApiKeyConfigured()) {
+      return reply.status(400).send({ error: "OPENAI_API_KEY not configured" });
+    }
+
+    const session = getSession(id);
+    if (!session) {
+      return reply.status(404).send({ error: "Session not found" });
+    }
+
+    const messages = await loadSession(id);
+    if (!messages || messages.length === 0) {
+      return reply.status(400).send({ error: "Session has no messages" });
+    }
+
+    const summary = await summarizeSession(messages);
+    if (!summary) {
+      return reply.status(500).send({ error: "Failed to generate summary" });
+    }
+
+    updateSessionSummary(id, summary);
+    return { summary };
+  });
+
   // --- Serve React dashboard (static files) ---
   const dashboardPath = join(__dirname, "..", "..", "dashboard", "dist");
 
@@ -291,11 +391,21 @@ end tell`;
   const count = await reindex();
   console.log(`Indexed ${count} sessions`);
 
+  // Start background summary processor
+  if (isApiKeyConfigured()) {
+    summaryProcessor.start();
+    console.log("AI summary processor started");
+  } else {
+    console.log("AI summaries disabled (set OPENAI_API_KEY to enable)");
+  }
+
   // Watch for changes and re-scan affected sessions
   startWatcher(async () => {
     const sessions = await scanSessions();
     upsertSessions(sessions);
     await broadcastLiveSessions();
+    // Summary generation handled by background processor (every 5 mins)
+    // Only processes sessions idle for 30+ mins
   });
 
   await app.listen({ port, host: "127.0.0.1" });
@@ -303,6 +413,7 @@ end tell`;
 
   // Cleanup on exit
   const cleanup = () => {
+    summaryProcessor.stop();
     closeDb();
     app.close();
   };

@@ -51,10 +51,17 @@ function getDb(): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_project
       ON sessions(project_name);
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
   `);
 
   ensureColumn(db, "sessions", "repo_key", "TEXT");
   ensureColumn(db, "sessions", "repo_source", "TEXT");
+  ensureColumn(db, "sessions", "summary_stale", "INTEGER DEFAULT 1");
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_sessions_repo_key
       ON sessions(repo_key);
@@ -80,8 +87,8 @@ function ensureColumn(
 export function upsertSession(session: Session): void {
   const db = getDb();
   db.prepare(`
-    INSERT INTO sessions (id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at, message_count, version, git_branch, first_prompt, summary, updated_at)
-    VALUES (@id, @projectPath, @projectName, @repoKey, @repoSource, @cwd, @startedAt, @lastActiveAt, @messageCount, @version, @gitBranch, @firstPrompt, @summary, datetime('now'))
+    INSERT INTO sessions (id, project_path, project_name, repo_key, repo_source, cwd, started_at, last_active_at, message_count, version, git_branch, first_prompt, summary, summary_stale, updated_at)
+    VALUES (@id, @projectPath, @projectName, @repoKey, @repoSource, @cwd, @startedAt, @lastActiveAt, @messageCount, @version, @gitBranch, @firstPrompt, @summary, 1, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       project_path = @projectPath,
       project_name = @projectName,
@@ -94,6 +101,7 @@ export function upsertSession(session: Session): void {
       git_branch = @gitBranch,
       first_prompt = @firstPrompt,
       summary = COALESCE(@summary, sessions.summary),
+      summary_stale = CASE WHEN sessions.last_active_at != @lastActiveAt THEN 1 ELSE sessions.summary_stale END,
       updated_at = datetime('now')
   `).run({
     id: session.id,
@@ -257,6 +265,53 @@ export function getMessagesPerDay(days = 30): DailyMessageCount[] {
     date: row.date as string,
     messageCount: row.message_count as number,
   }));
+}
+
+export function getSessionsNeedingSummary(limit = 50): Array<{ id: string }> {
+  const db = getDb();
+  // Only get sessions that:
+  // 1. Have been idle for 30+ minutes
+  // 2. AND summary_stale = 1 (needs new summary)
+  const rows = db.prepare(`
+    SELECT id FROM sessions
+    WHERE datetime(last_active_at) < datetime('now', '-30 minutes')
+      AND (summary_stale = 1 OR summary_stale IS NULL)
+    ORDER BY last_active_at DESC
+    LIMIT ?
+  `).all(limit) as Array<{ id: string }>;
+
+  return rows;
+}
+
+export function updateSessionSummary(id: string, summary: string): void {
+  const db = getDb();
+  db.prepare(`
+    UPDATE sessions
+    SET summary = ?, summary_stale = 0, updated_at = datetime('now')
+    WHERE id = ?
+  `).run(summary, id);
+}
+
+export function getSetting(key: string): string | null {
+  const db = getDb();
+  const row = db.prepare(`SELECT value FROM settings WHERE key = ?`).get(key) as { value: string } | undefined;
+  return row?.value ?? null;
+}
+
+export function setSetting(key: string, value: string): void {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO settings (key, value, updated_at)
+    VALUES (?, ?, datetime('now'))
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = datetime('now')
+  `).run(key, value);
+}
+
+export function deleteSetting(key: string): void {
+  const db = getDb();
+  db.prepare(`DELETE FROM settings WHERE key = ?`).run(key);
 }
 
 export function closeDb(): void {
